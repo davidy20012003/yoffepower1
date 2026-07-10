@@ -1,20 +1,47 @@
-import { PageShell } from "@/components/page-shell";
+import type { Metadata } from "next";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 
-export default async function ServicesPage({
-  params
-}: {
+type PageProps = {
   params: Promise<{ locale: Locale }>;
-}) {
+};
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const dictionary = getDictionary(locale);
+
+  return {
+    title: dictionary.services.metadata.title,
+    description: dictionary.services.metadata.description
+  };
+}
+
+export default async function ServicesPage({ params }: PageProps) {
   const { locale } = await params;
   const dictionary = getDictionary(locale);
 
   return (
-    <PageShell
-      eyebrow={dictionary.services.eyebrow}
-      title={dictionary.services.title}
-      description={dictionary.services.description}
-    />
+    <div className="space-y-8">
+      <header className="max-w-3xl">
+        <h1 className="text-4xl font-bold text-slate-950">{dictionary.services.title}</h1>
+        <p className="mt-4 text-lg leading-8 text-slate-700">{dictionary.services.intro}</p>
+      </header>
+
+      <div className="grid gap-5 md:grid-cols-2">
+        {dictionary.services.sections.map((section) => (
+          <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm" key={section.title}>
+            <h2 className="text-2xl font-bold text-slate-950">{section.title}</h2>
+            <ul className="mt-4 space-y-2 text-slate-700">
+              {section.items.map((item) => (
+                <li className="flex gap-2" key={item}>
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-800" aria-hidden="true" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
