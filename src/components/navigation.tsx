@@ -5,6 +5,7 @@ import { getDictionary } from "@/i18n/dictionaries";
 const pages = [
   { href: "", key: "home" },
   { href: "services", key: "services" },
+  { href: "faq", key: "faq" },
   { href: "about", key: "about" },
   { href: "contact", key: "contact" }
 ] as const;
