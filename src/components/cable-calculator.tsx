@@ -9,10 +9,14 @@ import {
   validateInput
 } from "@/cable-calculator/calculate";
 import {
+  getAvailableSections,
+  normalizeDraftInput,
+  resolveDraftGroupingMode,
+  type DraftInput
+} from "@/cable-calculator/input-state";
+import {
   airTemperatureFactors,
   groundTemperatureFactors,
-  installationMethods,
-  sections,
   standardBreakers,
   table4Arrangements
 } from "@/cable-calculator/regulation-data";
@@ -21,7 +25,6 @@ import type {
   CalculatorInput,
   ConductorMaterial,
   Environment,
-  GroupingMode,
   Insulation,
   Phase,
   ProtectionType,
@@ -31,10 +34,8 @@ import type {
 } from "@/cable-calculator/types";
 
 const optionClass =
-  "rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-950 outline-none transition focus:border-blue-900 focus:ring-2 focus:ring-blue-100";
-const labelClass = "grid gap-2 text-sm font-bold text-slate-800";
-
-type DraftInput = Partial<CalculatorInput>;
+  "w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-950 outline-none transition focus:border-blue-900 focus:ring-2 focus:ring-blue-100";
+const labelClass = "grid min-w-0 gap-2 text-sm font-bold text-slate-800";
 
 function updateNumber(value: string) {
   return Number.parseFloat(value);
@@ -57,72 +58,6 @@ function isReady(input: DraftInput): input is CalculatorInput {
   );
 }
 
-function resolveGroupingMode(input: DraftInput): GroupingMode | null {
-  const method = installationMethods.find((item) => item.id === input.methodId);
-  if (!method || !input.cableKind) {
-    return null;
-  }
-
-  if (method.id === "lamed-ground-conduit") {
-    return input.cableKind === "singleCore" ? "table6" : "table7";
-  }
-
-  return method.groupingMode;
-}
-
-function normalizeAfterPatch(current: DraftInput, next: DraftInput): DraftInput {
-  const merged = { ...current, ...next };
-
-  if ("cableKind" in next) {
-    delete merged.methodId;
-    delete merged.vCategory;
-    delete merged.table4Arrangement;
-    delete merged.spacing;
-  }
-
-  if ("environment" in next) {
-    delete merged.methodId;
-    delete merged.vCategory;
-    delete merged.table4Arrangement;
-    delete merged.spacing;
-    merged.ambientTemperature = next.environment === "ground" ? 20 : 30;
-  }
-
-  if ("methodId" in next) {
-    delete merged.vCategory;
-    delete merged.table4Arrangement;
-    delete merged.spacing;
-  }
-
-  if ("parallelCount" in next) {
-    merged.groupCount = Math.max(merged.groupCount ?? merged.parallelCount ?? 1, merged.parallelCount ?? 1);
-  }
-
-  if (typeof merged.section === "number" && typeof merged.parallelCount !== "number") {
-    merged.parallelCount = 1;
-  }
-
-  if (typeof merged.parallelCount === "number" && typeof merged.groupCount !== "number" && (merged.table4Arrangement || merged.spacing)) {
-    merged.groupCount = merged.parallelCount;
-  }
-
-  const mode = resolveGroupingMode(merged);
-  if (mode === "table4") {
-    delete merged.spacing;
-  } else if (mode && merged.spacing) {
-    const valid = getSpacingOptions(mode).some((option) => option.value === merged.spacing);
-    if (!valid) {
-      delete merged.spacing;
-    }
-  }
-
-  if (merged.groupCount && merged.parallelCount) {
-    merged.groupCount = Math.max(merged.groupCount, merged.parallelCount);
-  }
-
-  return merged;
-}
-
 export function CableCalculator() {
   const [input, setInput] = useState<DraftInput>({});
 
@@ -138,15 +73,16 @@ export function CableCalculator() {
   }, [input.cableKind, input.environment]);
 
   const activeMethod = methods.find((method) => method.id === input.methodId);
-  const groupingMode = resolveGroupingMode(input);
+  const groupingMode = resolveDraftGroupingMode(input);
   const spacingOptions = groupingMode ? getSpacingOptions(groupingMode) : [];
+  const sectionOptions = getAvailableSections(input.material);
   const temperatureOptions =
     input.insulation && input.environment
       ? Object.keys(input.environment === "air" ? airTemperatureFactors[input.insulation] : groundTemperatureFactors[input.insulation]).map(Number)
       : [];
 
   function patch(next: DraftInput) {
-    setInput((current) => normalizeAfterPatch(current, next));
+    setInput((current) => normalizeDraftInput(current, next));
   }
 
   const fullInput = isReady(input)
@@ -203,7 +139,7 @@ export function CableCalculator() {
                 <option value="" disabled>
                   בחר
                 </option>
-                {sections.map((section) => (
+                {sectionOptions.map((section) => (
                   <option key={section} value={section}>
                     {section} ממ״ר
                   </option>

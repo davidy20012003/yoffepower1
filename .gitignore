@@ -1,5 +1,6 @@
 # dependencies
 node_modules
+.pnpm-store
 .pnp
 .pnp.*
 
@@ -30,3 +31,4 @@ pnpm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.tmp-tests

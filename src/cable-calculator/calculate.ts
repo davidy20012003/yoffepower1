@@ -251,13 +251,17 @@ export function calculateCable(input: CalculatorInput): CalculationResult {
 
   let message = "המפסק האוטומטי שנבחר מתאים לזרם המתוקן.";
   if (!breakerPass) {
-    if (!inPass && !i2Pass) {
-      message = "יותר מתנאי אחד אינו מתקיים. המפסק שנבחר אינו מתאים לזרם המתוקן.";
-    } else if (!inPass) {
-      message = `In = ${input.breakerRating} A גדול מ-I'z כולל = ${Math.floor(correctedTotal)} A.`;
-    } else {
-      message = `I2 = ${Math.round(i2)} A גדול מ-1.45 × I'z כולל = ${Math.floor(1.45 * correctedTotal)} A.`;
+    const reasons: string[] = [];
+
+    if (!inPass) {
+      reasons.push(`In = ${input.breakerRating} A גדול מ-I'z כולל = ${Math.floor(correctedTotal)} A.`);
     }
+
+    if (!i2Pass) {
+      reasons.push(`I2 = ${Math.round(i2)} A גדול מ-1.45 × I'z כולל = ${Math.floor(1.45 * correctedTotal)} A.`);
+    }
+
+    message = reasons.join(" ");
   }
 
   const trace: TraceItem[] = [

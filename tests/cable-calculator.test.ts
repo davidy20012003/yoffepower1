@@ -4,9 +4,11 @@ import {
   ampacityTables,
   groundTemperatureFactors,
   groundThermalResistivityFactors,
-  groupingFactors
+  groupingFactors,
+  installationMethods
 } from "../src/cable-calculator/regulation-data";
-import { calculateCable, validateInput } from "../src/cable-calculator/calculate";
+import { calculateCable, getAvailableMethods, validateInput } from "../src/cable-calculator/calculate";
+import { getAvailableSections, normalizeDraftInput } from "../src/cable-calculator/input-state";
 import type { CalculatorInput } from "../src/cable-calculator/types";
 
 const base: CalculatorInput = {
@@ -41,6 +43,25 @@ function cellCount() {
   }
   return count;
 }
+
+const representativeIzSamples = [
+  ["70.1", 16, "copperThree", 53],
+  ["70.2", 25, "aluminiumThree", 50],
+  ["70.3", 120, "copperSingle", 252],
+  ["70.4", 16, "copperThree", 58],
+  ["70.5", 185, "copperThree", 321],
+  ["70.6", 300, "aluminiumSingle", 279],
+  ["70.7", 95, "aluminiumThree", 172],
+  ["70.8", 630, "copperThree", 804],
+  ["90.1", 240, "copperSingle", 407],
+  ["90.2", 150, "aluminiumThree", 198],
+  ["90.3", 120, "copperThree", 300],
+  ["90.4", 70, "aluminiumSingle", 168],
+  ["90.5", 185, "copperThree", 407],
+  ["90.6", 150, "copperThree", 252],
+  ["90.7", 300, "aluminiumSingle", 521],
+  ["90.8", 500, "aluminiumThree", 739]
+] as const;
 
 assert.equal(Object.keys(ampacityTables).length, 16, "all 70.1-70.8 and 90.1-90.8 Iz tables are present");
 assert.equal(cellCount(), 852, "all numeric Iz cells from the 16 tables are represented");
@@ -86,6 +107,31 @@ assert.equal(
   486,
   "Table 90.5 copper single-phase, 185 mm²"
 );
+
+for (const [tableNumber, section, column, expected] of representativeIzSamples) {
+  const row = ampacityTables[tableNumber].find((item) => item.section === section);
+  assert.equal(row?.[column], expected, `${tableNumber} representative ${column} value at ${section} mm2`);
+}
+
+const methodFilterCases = [
+  { cableKind: "multicore", environment: "air", count: 17 },
+  { cableKind: "singleCore", environment: "air", count: 18 },
+  { cableKind: "multicore", environment: "ground", count: 2 },
+  { cableKind: "singleCore", environment: "ground", count: 2 }
+] as const;
+
+for (const filterCase of methodFilterCases) {
+  const methods = getAvailableMethods(filterCase);
+  assert.equal(methods.length, filterCase.count, `${filterCase.cableKind} ${filterCase.environment} method count`);
+  assert.ok(
+    methods.every((method) => method.environment === filterCase.environment && method.cableKinds.includes(filterCase.cableKind)),
+    `${filterCase.cableKind} ${filterCase.environment} methods all match the selected branch`
+  );
+}
+
+assert.equal(installationMethods.length, 31, "complete installation method list is retained");
+assert.deepEqual(getAvailableSections("aluminium").slice(0, 2), [6, 10], "aluminium cross-section choices start at 6 mm2");
+assert.deepEqual(getAvailableSections("copper").slice(0, 3), [1.5, 2.5, 4], "copper cross-section choices include small sections");
 
 assert.deepEqual(airTemperatureFactors["70"], {
   10: 1.3,
@@ -217,5 +263,38 @@ assert.equal(validateInput({ ...base, breakerRating: 4001 }).length, 1, "breaker
 assert.equal(result({ breakerRating: 50 }).breakerPass, true, "passing circuit breaker selection");
 assert.equal(result({ breakerRating: 80 }).inPass, false, "failure when In exceeds corrected current");
 assert.equal(result({ protectionType: "mcb", breakerRating: 70 }).i2Pass, false, "failure when I2 condition is not satisfied");
+assert.ok(
+  Math.abs(result({ parallelCount: 2, groupCount: 2, table4Arrangement: "bundled" }).correctedTotal - 92.8) < 0.0001,
+  "parallel cables multiply corrected current after grouping"
+);
+
+const bothBreakerFailures = result({ breakerRating: 100 });
+assert.equal(bothBreakerFailures.breakerPass, false, "breaker fails when both protection conditions fail");
+assert.equal(bothBreakerFailures.inPass, false, "both-failure case includes In failure");
+assert.equal(bothBreakerFailures.i2Pass, false, "both-failure case includes I2 failure");
+assert.ok(bothBreakerFailures.message.includes("In = 100"), "both-failure message displays In reason");
+assert.ok(bothBreakerFailures.message.includes("I2 = 145"), "both-failure message displays I2 reason");
+
+let draft = normalizeDraftInput({}, { cableKind: "multicore" });
+draft = normalizeDraftInput(draft, { material: "copper" });
+draft = normalizeDraftInput(draft, { section: 16 });
+assert.equal(draft.parallelCount, 1, "parallel default 1 is committed as a valid selection");
+draft = normalizeDraftInput(draft, { environment: "air" });
+assert.equal(draft.ambientTemperature, 35, "air reference temperature default is committed");
+draft = normalizeDraftInput(draft, { methodId: "dalet-wall-conduit-multicore" });
+draft = normalizeDraftInput(draft, { insulation: "70" });
+draft = normalizeDraftInput(draft, { phase: "three" });
+draft = normalizeDraftInput(draft, { table4Arrangement: "bundled" });
+assert.equal(draft.groupCount, 1, "group quantity default 1 is committed once grouping is resolved");
+draft = normalizeDraftInput(draft, { protectionType: "mcb", breakerRating: 50 });
+draft = normalizeDraftInput(draft, { environment: "ground" });
+assert.equal(draft.environment, "ground", "environment changes are preserved");
+assert.equal(draft.ambientTemperature, 30, "ground reference temperature replaces air reference temperature");
+assert.equal(draft.methodId, undefined, "changing environment clears stale installation method");
+assert.equal(draft.protectionType, undefined, "changing environment clears stale protection selection");
+draft = normalizeDraftInput(draft, { material: "aluminium" });
+draft = normalizeDraftInput(draft, { section: 1.5 });
+draft = normalizeDraftInput(draft, { material: "aluminium" });
+assert.equal(draft.section, undefined, "invalid aluminium cross-section is cleared");
 
 console.log("Cable calculator tests passed");
