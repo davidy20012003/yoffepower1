@@ -1,0 +1,4 @@
+*.pdf
+*.docx
+.tmp-tests
+tmp_reg_audit
