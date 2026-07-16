@@ -96,7 +96,7 @@ export default async function HomePage({ params }: PageProps) {
               className="mt-3 inline-flex w-full justify-center rounded-md border border-blue-900 px-4 py-3 text-base font-semibold text-blue-950 hover:bg-blue-50 sm:w-auto"
               href="/he/cable-calculator"
             >
-              מחשבון זרם מותר לכבלים
+              עזרה בבחירת כבלים
             </Link>
           ) : null}
         </div>
@@ -125,7 +125,7 @@ export default async function HomePage({ params }: PageProps) {
               className="inline-flex w-full justify-center rounded-md bg-blue-900 px-4 py-3 text-base font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 sm:w-auto"
               href="/he/cable-calculator"
             >
-              פתח את המחשבון
+              עזרה בבחירת כבלים
             </Link>
           </div>
         </section>
