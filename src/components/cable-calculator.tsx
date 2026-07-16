@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   calculateCable,
   getAvailableMethods,
@@ -47,6 +47,23 @@ type Option<T extends string | number> = {
   description?: string;
 };
 
+type StepKey =
+  | "cableKind"
+  | "material"
+  | "section"
+  | "parallelCount"
+  | "environment"
+  | "method"
+  | "vCategory"
+  | "insulation"
+  | "phase"
+  | "ambientTemperature"
+  | "table4Arrangement"
+  | "spacing"
+  | "groupCount"
+  | "protectionType"
+  | "breakerRating";
+
 function isReady(input: DraftInput): input is CalculatorInput {
   return (
     Boolean(input.cableKind) &&
@@ -69,19 +86,40 @@ function OptionGroup<T extends string | number>({
   options,
   selected,
   onSelect,
-  compact = false
+  compact = false,
+  expanded = false,
+  onReopen,
+  changeLabel = "שנה"
 }: {
   title: string;
   options: readonly Option<T>[];
   selected?: T;
   onSelect: (value: T) => void;
   compact?: boolean;
+  expanded?: boolean;
+  onReopen?: () => void;
+  changeLabel?: string;
 }) {
+  const hasSelectedValue = selected !== undefined;
+  const selectedOption = hasSelectedValue ? options.find((option) => option.value === selected) : undefined;
+  const visibleOptions = selectedOption && !expanded ? [selectedOption] : options;
+
   return (
     <div className="grid min-w-0 gap-2">
-      <p className="text-sm font-bold text-slate-800">{title}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-bold text-slate-800">{title}</p>
+        {selectedOption && !expanded && onReopen ? (
+          <button
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-blue-950 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
+            onClick={onReopen}
+            type="button"
+          >
+            {changeLabel}
+          </button>
+        ) : null}
+      </div>
       <div className={`grid gap-2 ${compact ? "grid-cols-2 sm:grid-cols-4 lg:grid-cols-6" : "sm:grid-cols-2"}`} role="list">
-        {options.map((option) => {
+        {visibleOptions.map((option) => {
           const isSelected = option.value === selected;
 
           return (
@@ -140,6 +178,10 @@ function MethodCard({
 export function CableCalculator() {
   const [input, setInput] = useState<DraftInput>({});
   const [methodsExpanded, setMethodsExpanded] = useState(true);
+  const [expandedSteps, setExpandedSteps] = useState<Partial<Record<StepKey, boolean>>>({});
+  const resultRef = useRef<HTMLElement | null>(null);
+  const breakerSectionRef = useRef<HTMLElement | null>(null);
+  const lastScrolledResultKey = useRef<string | null>(null);
 
   const methods = useMemo(() => {
     if (!input.cableKind || !input.environment) {
@@ -165,7 +207,19 @@ export function CableCalculator() {
           .sort((first, second) => first - second)
       : [];
 
-  function patch(next: DraftInput) {
+  function isStepExpanded(step: StepKey) {
+    return expandedSteps[step] === true;
+  }
+
+  function reopenStep(step: StepKey) {
+    setExpandedSteps((current) => ({ ...current, [step]: true }));
+  }
+
+  function collapseStep(step: StepKey) {
+    setExpandedSteps((current) => ({ ...current, [step]: false }));
+  }
+
+  function patch(next: DraftInput, completedStep?: StepKey) {
     if ("cableKind" in next || "environment" in next) {
       setMethodsExpanded(true);
     }
@@ -174,7 +228,27 @@ export function CableCalculator() {
       setMethodsExpanded(false);
     }
 
+    if (completedStep) {
+      collapseStep(completedStep);
+    }
+
     setInput((current) => normalizeDraftInput(current, next));
+  }
+
+  function chooseAnotherBreaker() {
+    setExpandedSteps((current) => ({
+      ...current,
+      protectionType: true,
+      breakerRating: true
+    }));
+    setInput((current) => {
+      const next = { ...current };
+      delete next.breakerRating;
+      return next;
+    });
+    window.requestAnimationFrame(() => {
+      breakerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   const fullInput = isReady(input)
@@ -194,6 +268,18 @@ export function CableCalculator() {
   const showProtection = readyForGrouping && typeof input.groupCount === "number" && groupingResolved;
   const errors = fullInput && showProtection ? validateInput(fullInput) : [];
   const result = fullInput && showProtection && errors.length === 0 ? calculateCable(fullInput) : null;
+  const resultKey = result && fullInput ? JSON.stringify(fullInput) : null;
+
+  useEffect(() => {
+    if (!result || !resultKey || lastScrolledResultKey.current === resultKey) {
+      return;
+    }
+
+    lastScrolledResultKey.current = resultKey;
+    window.requestAnimationFrame(() => {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [result, resultKey]);
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -207,7 +293,9 @@ export function CableCalculator() {
               { value: "singleCore", label: "מוליכים מבודדים / כבלים חד-גידיים" }
             ]}
             selected={input.cableKind}
-            onSelect={(cableKind) => patch({ cableKind })}
+            expanded={isStepExpanded("cableKind")}
+            onReopen={() => reopenStep("cableKind")}
+            onSelect={(cableKind) => patch({ cableKind }, "cableKind")}
           />
 
           {input.cableKind ? (
@@ -218,7 +306,9 @@ export function CableCalculator() {
                 { value: "aluminium", label: "אלומיניום" }
               ]}
               selected={input.material}
-              onSelect={(material) => patch({ material })}
+              expanded={isStepExpanded("material")}
+              onReopen={() => reopenStep("material")}
+              onSelect={(material) => patch({ material }, "material")}
             />
           ) : null}
 
@@ -228,7 +318,9 @@ export function CableCalculator() {
               title="שטח חתך"
               options={sectionOptions.map((section) => ({ value: section, label: `${section} ממ״ר` }))}
               selected={input.section}
-              onSelect={(section) => patch({ section })}
+              expanded={isStepExpanded("section")}
+              onReopen={() => reopenStep("section")}
+              onSelect={(section) => patch({ section }, "section")}
             />
           ) : null}
 
@@ -238,7 +330,9 @@ export function CableCalculator() {
               title="מספר כבלים / מערכות במקביל"
               options={quantityOptions.map((quantity) => ({ value: quantity, label: String(quantity) }))}
               selected={input.parallelCount ?? 1}
-              onSelect={(parallelCount) => patch({ parallelCount })}
+              expanded={isStepExpanded("parallelCount")}
+              onReopen={() => reopenStep("parallelCount")}
+              onSelect={(parallelCount) => patch({ parallelCount }, "parallelCount")}
             />
           ) : null}
 
@@ -250,7 +344,9 @@ export function CableCalculator() {
                 { value: "ground", label: "קרקע" }
               ]}
               selected={input.environment}
-              onSelect={(environment) => patch({ environment })}
+              expanded={isStepExpanded("environment")}
+              onReopen={() => reopenStep("environment")}
+              onSelect={(environment) => patch({ environment }, "environment")}
             />
           ) : null}
         </div>
@@ -276,7 +372,7 @@ export function CableCalculator() {
                 key={method.id}
                 method={method}
                 selected={input.methodId === method.id}
-                onSelect={() => patch({ methodId: method.id })}
+                onSelect={() => patch({ methodId: method.id }, "method")}
               />
             ))}
           </div>
@@ -295,7 +391,9 @@ export function CableCalculator() {
                   label: category.label
                 }))}
                 selected={input.vCategory}
-                onSelect={(vCategory) => patch({ vCategory })}
+                expanded={isStepExpanded("vCategory")}
+                onReopen={() => reopenStep("vCategory")}
+                onSelect={(vCategory) => patch({ vCategory }, "vCategory")}
               />
             ) : null}
 
@@ -307,7 +405,9 @@ export function CableCalculator() {
                   { value: "90", label: "90°C - XLPE" }
                 ]}
                 selected={input.insulation}
-                onSelect={(insulation) => patch({ insulation })}
+                expanded={isStepExpanded("insulation")}
+                onReopen={() => reopenStep("insulation")}
+                onSelect={(insulation) => patch({ insulation }, "insulation")}
               />
             ) : null}
 
@@ -319,7 +419,9 @@ export function CableCalculator() {
                   { value: "three", label: "תלת-פאזי" }
                 ]}
                 selected={input.phase}
-                onSelect={(phase) => patch({ phase })}
+                expanded={isStepExpanded("phase")}
+                onReopen={() => reopenStep("phase")}
+                onSelect={(phase) => patch({ phase }, "phase")}
               />
             ) : null}
 
@@ -329,7 +431,9 @@ export function CableCalculator() {
                 title={input.environment === "ground" ? "טמפרטורת קרקע" : "טמפרטורת אוויר אופפת"}
                 options={temperatureOptions.map((temperature) => ({ value: temperature, label: `${temperature}°C` }))}
                 selected={input.ambientTemperature}
-                onSelect={(ambientTemperature) => patch({ ambientTemperature })}
+                expanded={isStepExpanded("ambientTemperature")}
+                onReopen={() => reopenStep("ambientTemperature")}
+                onSelect={(ambientTemperature) => patch({ ambientTemperature }, "ambientTemperature")}
               />
             ) : null}
 
@@ -342,7 +446,9 @@ export function CableCalculator() {
                   description: arrangement.label
                 }))}
                 selected={input.table4Arrangement}
-                onSelect={(table4Arrangement) => patch({ table4Arrangement })}
+                expanded={isStepExpanded("table4Arrangement")}
+                onReopen={() => reopenStep("table4Arrangement")}
+                onSelect={(table4Arrangement) => patch({ table4Arrangement }, "table4Arrangement")}
               />
             ) : null}
 
@@ -351,7 +457,9 @@ export function CableCalculator() {
                 title="מרחק בין כבלים / קבוצות"
                 options={spacingOptions.map((spacing) => ({ value: spacing.value, label: spacing.label }))}
                 selected={input.spacing}
-                onSelect={(spacing) => patch({ spacing })}
+                expanded={isStepExpanded("spacing")}
+                onReopen={() => reopenStep("spacing")}
+                onSelect={(spacing) => patch({ spacing }, "spacing")}
               />
             ) : null}
 
@@ -361,7 +469,9 @@ export function CableCalculator() {
                 title="מספר כולל בקבוצה"
                 options={groupQuantityOptions.map((groupCount) => ({ value: groupCount, label: String(groupCount) }))}
                 selected={input.groupCount ?? input.parallelCount ?? 1}
-                onSelect={(groupCount) => patch({ groupCount })}
+                expanded={isStepExpanded("groupCount")}
+                onReopen={() => reopenStep("groupCount")}
+                onSelect={(groupCount) => patch({ groupCount }, "groupCount")}
               />
             ) : null}
           </div>
@@ -369,7 +479,7 @@ export function CableCalculator() {
       ) : null}
 
       {showProtection ? (
-        <section className={sectionClass}>
+        <section className={sectionClass} ref={breakerSectionRef}>
           <h2 className="text-xl font-bold text-slate-950">מפסק אוטומטי</h2>
           <div className="mt-5 grid gap-5">
             <OptionGroup<ProtectionType>
@@ -379,7 +489,9 @@ export function CableCalculator() {
                 { value: "adjustable-breaker", label: "מפסק אוטומטי ניתן לכוונון", description: "עד 4000 אמפר" }
               ]}
               selected={input.protectionType}
-              onSelect={(protectionType) => patch({ protectionType })}
+              expanded={isStepExpanded("protectionType")}
+              onReopen={() => reopenStep("protectionType")}
+              onSelect={(protectionType) => patch({ protectionType }, "protectionType")}
             />
 
             {input.protectionType ? (
@@ -388,7 +500,9 @@ export function CableCalculator() {
                 title="זרם נקוב של המפסק In"
                 options={breakerOptions.map((breakerRating) => ({ value: breakerRating, label: String(breakerRating) }))}
                 selected={input.breakerRating}
-                onSelect={(breakerRating) => patch({ breakerRating })}
+                expanded={isStepExpanded("breakerRating")}
+                onReopen={() => reopenStep("breakerRating")}
+                onSelect={(breakerRating) => patch({ breakerRating }, "breakerRating")}
               />
             ) : null}
           </div>
@@ -407,7 +521,7 @@ export function CableCalculator() {
       ) : null}
 
       {result ? (
-        <section className={sectionClass}>
+        <section className={sectionClass} ref={resultRef}>
           <h2 className="text-xl font-bold text-slate-950">תוצאת זרם מותר ובדיקת מפסק</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <ResultCard label="טבלת Iz" value={result.izTable} />
@@ -425,6 +539,15 @@ export function CableCalculator() {
           <div className={`mt-5 rounded-lg p-4 ${result.breakerPass ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}>
             <p className="text-lg font-bold">{result.breakerPass ? "עובר" : "נכשל"}</p>
             <p className="mt-1 leading-7">{result.message}</p>
+            {!result.breakerPass ? (
+              <button
+                className="mt-4 rounded-md bg-red-700 px-4 py-2 text-sm font-bold text-white hover:bg-red-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-900"
+                onClick={chooseAnotherBreaker}
+                type="button"
+              >
+                בחר מפסק אחר
+              </button>
+            ) : null}
           </div>
 
           <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50">

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 
@@ -25,6 +26,14 @@ export default async function ServicesPage({ params }: PageProps) {
       <header className="max-w-3xl">
         <h1 className="text-4xl font-bold text-slate-950">{dictionary.services.title}</h1>
         <p className="mt-4 text-lg leading-8 text-slate-700">{dictionary.services.intro}</p>
+        {locale === "he" ? (
+          <Link
+            className="mt-5 inline-flex rounded-md bg-blue-900 px-4 py-3 text-base font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
+            href="/he/cable-calculator"
+          >
+            למחשבון זרם מותר לכבלים
+          </Link>
+        ) : null}
       </header>
 
       <div className="grid gap-5 md:grid-cols-2">
