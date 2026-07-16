@@ -8,7 +8,7 @@ import {
   installationMethods
 } from "../src/cable-calculator/regulation-data";
 import { calculateCable, getAvailableMethods, validateInput } from "../src/cable-calculator/calculate";
-import { getAvailableSections, normalizeDraftInput } from "../src/cable-calculator/input-state";
+import { getAvailableSections, getBreakerRatingOptions, normalizeDraftInput } from "../src/cable-calculator/input-state";
 import type { CalculatorInput } from "../src/cable-calculator/types";
 
 const base: CalculatorInput = {
@@ -132,6 +132,11 @@ for (const filterCase of methodFilterCases) {
 assert.equal(installationMethods.length, 31, "complete installation method list is retained");
 assert.deepEqual(getAvailableSections("aluminium").slice(0, 2), [6, 10], "aluminium cross-section choices start at 6 mm2");
 assert.deepEqual(getAvailableSections("copper").slice(0, 3), [1.5, 2.5, 4], "copper cross-section choices include small sections");
+assert.equal(getAvailableSections("copper").slice(-1)[0], 300, "selectable cross-sections are capped at 300 mm2");
+assert.deepEqual(getBreakerRatingOptions("mcb"), [6, 10, 16, 20, 25, 32, 40, 50, 63], "MCB ratings are capped at 63 A");
+assert.equal(getBreakerRatingOptions("adjustable-breaker").slice(-1)[0], 4000, "adjustable breaker ratings are capped at 4000 A");
+assert.equal(getAvailableMethods({ cableKind: "multicore", environment: "air" })[0]?.id, "yod-bet-wall-surface", "wall/ceiling method is shown first");
+assert.equal(getAvailableMethods({ cableKind: "multicore", environment: "air" }).slice(-1)[0]?.id, "yod-aleph-frame", "door/window frame method is shown last");
 
 assert.deepEqual(airTemperatureFactors["70"], {
   10: 1.3,
@@ -258,22 +263,24 @@ assert.equal(
 
 assert.equal(validateInput({ ...base, parallelCount: 3, groupCount: 2 }).length, 1, "group count cannot be lower than parallel count");
 assert.equal(validateInput({ ...base, table4Arrangement: undefined }).length, 1, "Table 4 requires an arrangement row");
-assert.equal(validateInput({ ...base, breakerRating: 4001 }).length, 1, "breaker rating is capped at 4000 A");
+assert.equal(validateInput({ ...base, protectionType: "adjustable-breaker", breakerRating: 4001 }).length, 1, "breaker rating is capped at 4000 A");
+assert.ok(validateInput({ ...base, section: 400 }).some((error) => error.includes("300")), "cross-section is capped at 300 mm2");
+assert.ok(validateInput({ ...base, breakerRating: 80 }).some((error) => error.includes("63")), "MCB is capped at 63 A");
 
 assert.equal(result({ breakerRating: 50 }).breakerPass, true, "passing circuit breaker selection");
-assert.equal(result({ breakerRating: 80 }).inPass, false, "failure when In exceeds corrected current");
-assert.equal(result({ protectionType: "mcb", breakerRating: 70 }).i2Pass, false, "failure when I2 condition is not satisfied");
+assert.equal(result({ breakerRating: 63 }).inPass, false, "failure when In exceeds corrected current");
+assert.equal(result({ protectionType: "mcb", breakerRating: 63 }).i2Pass, false, "failure when I2 condition is not satisfied");
 assert.ok(
   Math.abs(result({ parallelCount: 2, groupCount: 2, table4Arrangement: "bundled" }).correctedTotal - 92.8) < 0.0001,
   "parallel cables multiply corrected current after grouping"
 );
 
-const bothBreakerFailures = result({ breakerRating: 100 });
+const bothBreakerFailures = result({ breakerRating: 63 });
 assert.equal(bothBreakerFailures.breakerPass, false, "breaker fails when both protection conditions fail");
 assert.equal(bothBreakerFailures.inPass, false, "both-failure case includes In failure");
 assert.equal(bothBreakerFailures.i2Pass, false, "both-failure case includes I2 failure");
-assert.ok(bothBreakerFailures.message.includes("In = 100"), "both-failure message displays In reason");
-assert.ok(bothBreakerFailures.message.includes("I2 = 145"), "both-failure message displays I2 reason");
+assert.ok(bothBreakerFailures.message.includes("In = 63"), "both-failure message displays In reason");
+assert.ok(bothBreakerFailures.message.includes("I2 = 91"), "both-failure message displays I2 reason");
 
 let draft = normalizeDraftInput({}, { cableKind: "multicore" });
 draft = normalizeDraftInput(draft, { material: "copper" });

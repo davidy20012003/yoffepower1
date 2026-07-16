@@ -1,4 +1,8 @@
 import {
+  maxMcbRating,
+  maxSelectableSection
+} from "./limits";
+import {
   airTemperatureFactors,
   ampacityColumn,
   ampacityTables,
@@ -21,6 +25,45 @@ import type {
   TraceItem
 } from "./types";
 import type { IzTableNumber } from "./regulation-data";
+
+const installationMethodDisplayOrder = [
+  "yod-bet-wall-surface",
+  "yod-dalet-perforated-tray-multicore",
+  "tet-vav-perforated-tray-single",
+  "yod-gimel-unperforated-tray",
+  "tet-zayin-ladder-multicore",
+  "yod-zayin-ladder-single",
+  "kaf-zayin-open-channel",
+  "yod-het-building-void",
+  "yod-tet-floor-ceiling-void",
+  "zayin-suspended-channel-single",
+  "het-suspended-channel-multicore",
+  "heh-wall-channel-single",
+  "vav-wall-channel-multicore",
+  "tet-shared-channel-single",
+  "yod-shared-channel-multicore",
+  "dalet-wall-conduit-multicore",
+  "gimel-wall-conduit-single",
+  "aleph-wall-insulated-conductors",
+  "bet-wall-insulated-multicore",
+  "kaf-heh-conduit-channel-single",
+  "kaf-vav-conduit-channel-multicore",
+  "kaf-dalet-horizontal-conduit",
+  "kaf-floor-channel-single",
+  "kaf-aleph-floor-channel-multicore",
+  "kaf-bet-wall-recessed-single",
+  "kaf-gimel-wall-recessed-multicore",
+  "kaf-het-wall-conduit-single",
+  "kaf-tet-wall-conduit-multicore",
+  "lamed-aleph-direct-ground",
+  "lamed-ground-conduit",
+  "yod-aleph-frame"
+];
+
+function methodDisplayRank(method: InstallationMethod) {
+  const index = installationMethodDisplayOrder.indexOf(method.id);
+  return index === -1 ? installationMethodDisplayOrder.length - 1 : index;
+}
 
 function pickTableValue(table: Record<number, number>, numericKey: number) {
   const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
@@ -95,7 +138,7 @@ export function resolveIzTablePair(method: InstallationMethod, input: Pick<Calcu
 export function getAvailableMethods(input: Pick<CalculatorInput, "cableKind" | "environment">) {
   return installationMethods.filter(
     (method) => method.environment === input.environment && method.cableKinds.includes(input.cableKind)
-  );
+  ).sort((first, second) => methodDisplayRank(first) - methodDisplayRank(second));
 }
 
 export function getSpacingOptions(mode: GroupingMode) {
@@ -135,6 +178,10 @@ export function validateInput(input: CalculatorInput): string[] {
     errors.push("שטח החתך אינו קיים בטבלאות גרסת V1.");
   }
 
+  if (input.section > maxSelectableSection) {
+    errors.push("שטח החתך בגרסת V1 מוגבל ל-300 ממ״ר.");
+  }
+
   if (input.parallelCount < 1) {
     errors.push("מספר הכבלים או מערכות המוליכים במקביל חייב להיות לפחות 1.");
   }
@@ -160,6 +207,10 @@ export function validateInput(input: CalculatorInput): string[] {
 
   if (!Number.isFinite(input.breakerRating) || input.breakerRating <= 0 || input.breakerRating > 4000) {
     errors.push("יש לבחור זרם נקוב של מפסק בתחום 1 עד 4000 אמפר.");
+  }
+
+  if (input.protectionType === "mcb" && input.breakerRating > maxMcbRating) {
+    errors.push("מא״ז מוגבל בגרסת V1 ל-63 אמפר.");
   }
 
   return errors;

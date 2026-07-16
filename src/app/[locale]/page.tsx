@@ -91,6 +91,14 @@ export default async function HomePage({ params }: PageProps) {
           <div className="mt-7">
             <ContactButtons locale={locale} />
           </div>
+          {locale === "he" ? (
+            <Link
+              className="mt-3 inline-flex w-full justify-center rounded-md border border-blue-900 px-4 py-3 text-base font-semibold text-blue-950 hover:bg-blue-50 sm:w-auto"
+              href="/he/cable-calculator"
+            >
+              מחשבון זרם מותר לכבלים
+            </Link>
+          ) : null}
         </div>
         <div className="relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-slate-100 shadow-sm">
           <Image

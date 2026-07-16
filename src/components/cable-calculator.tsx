@@ -10,14 +10,16 @@ import {
 } from "@/cable-calculator/calculate";
 import {
   getAvailableSections,
+  getBreakerRatingOptions,
+  getGroupQuantityOptions,
   normalizeDraftInput,
   resolveDraftGroupingMode,
   type DraftInput
 } from "@/cable-calculator/input-state";
+import { quantityOptions } from "@/cable-calculator/limits";
 import {
   airTemperatureFactors,
   groundTemperatureFactors,
-  standardBreakers,
   table4Arrangements
 } from "@/cable-calculator/regulation-data";
 import type {
@@ -33,13 +35,17 @@ import type {
   VCategory
 } from "@/cable-calculator/types";
 
-const optionClass =
-  "w-full min-w-0 rounded-md border border-slate-300 bg-white px-3 py-3 text-base text-slate-950 outline-none transition focus:border-blue-900 focus:ring-2 focus:ring-blue-100";
-const labelClass = "grid min-w-0 gap-2 text-sm font-bold text-slate-800";
+const sectionClass = "rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5";
+const optionBaseClass =
+  "rounded-lg border px-3 py-3 text-start text-sm font-semibold leading-6 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900";
+const selectedClass = "border-blue-900 bg-blue-50 text-blue-950";
+const unselectedClass = "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
 
-function updateNumber(value: string) {
-  return Number.parseFloat(value);
-}
+type Option<T extends string | number> = {
+  label: string;
+  value: T;
+  description?: string;
+};
 
 function isReady(input: DraftInput): input is CalculatorInput {
   return (
@@ -58,8 +64,82 @@ function isReady(input: DraftInput): input is CalculatorInput {
   );
 }
 
+function OptionGroup<T extends string | number>({
+  title,
+  options,
+  selected,
+  onSelect,
+  compact = false
+}: {
+  title: string;
+  options: readonly Option<T>[];
+  selected?: T;
+  onSelect: (value: T) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="grid min-w-0 gap-2">
+      <p className="text-sm font-bold text-slate-800">{title}</p>
+      <div className={`grid gap-2 ${compact ? "grid-cols-2 sm:grid-cols-4 lg:grid-cols-6" : "sm:grid-cols-2"}`} role="list">
+        {options.map((option) => {
+          const isSelected = option.value === selected;
+
+          return (
+            <button
+              aria-pressed={isSelected}
+              className={`${optionBaseClass} ${isSelected ? selectedClass : unselectedClass}`}
+              key={String(option.value)}
+              onClick={() => onSelect(option.value)}
+              type="button"
+            >
+              <span className="block">{option.label}</span>
+              {option.description ? <span className="mt-1 block text-xs font-normal text-slate-600">{option.description}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MethodCard({
+  method,
+  selected,
+  onSelect
+}: {
+  method: ReturnType<typeof getAvailableMethods>[number];
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={selected}
+      className={`rounded-lg border p-4 text-start transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 ${
+        selected ? selectedClass : unselectedClass
+      }`}
+      onClick={onSelect}
+      type="button"
+    >
+      <span className="relative block h-28 w-full overflow-hidden rounded-md border border-slate-200 bg-white">
+        <Image
+          alt={`שיטת התקנה ${method.marking}`}
+          className="object-contain p-2"
+          fill
+          sizes="(min-width: 768px) 40vw, 90vw"
+          src={method.imagePath}
+        />
+      </span>
+      <span className="mt-3 block text-lg font-bold text-slate-950">
+        {method.marking} - {method.title}
+      </span>
+      <span className="mt-1 block text-sm leading-6 text-slate-700">{method.description}</span>
+    </button>
+  );
+}
+
 export function CableCalculator() {
   const [input, setInput] = useState<DraftInput>({});
+  const [methodsExpanded, setMethodsExpanded] = useState(true);
 
   const methods = useMemo(() => {
     if (!input.cableKind || !input.environment) {
@@ -76,12 +156,24 @@ export function CableCalculator() {
   const groupingMode = resolveDraftGroupingMode(input);
   const spacingOptions = groupingMode ? getSpacingOptions(groupingMode) : [];
   const sectionOptions = getAvailableSections(input.material);
+  const groupQuantityOptions = getGroupQuantityOptions(groupingMode, input.parallelCount ?? 1);
+  const breakerOptions = getBreakerRatingOptions(input.protectionType);
   const temperatureOptions =
     input.insulation && input.environment
-      ? Object.keys(input.environment === "air" ? airTemperatureFactors[input.insulation] : groundTemperatureFactors[input.insulation]).map(Number)
+      ? Object.keys(input.environment === "air" ? airTemperatureFactors[input.insulation] : groundTemperatureFactors[input.insulation])
+          .map(Number)
+          .sort((first, second) => first - second)
       : [];
 
   function patch(next: DraftInput) {
+    if ("cableKind" in next || "environment" in next) {
+      setMethodsExpanded(true);
+    }
+
+    if ("methodId" in next) {
+      setMethodsExpanded(false);
+    }
+
     setInput((current) => normalizeDraftInput(current, next));
   }
 
@@ -105,259 +197,199 @@ export function CableCalculator() {
 
   return (
     <div className="space-y-6" dir="rtl">
-      <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <section className={sectionClass}>
         <h2 className="text-xl font-bold text-slate-950">רצף בחירה</h2>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
-          <label className={labelClass}>
-            כבל או מוליכים
-            <select className={optionClass} value={input.cableKind ?? ""} onChange={(event) => patch({ cableKind: event.target.value as CableKind })}>
-              <option value="" disabled>
-                בחר
-              </option>
-              <option value="multicore">כבל רב-גידי</option>
-              <option value="singleCore">מוליכים מבודדים / כבלים חד-גידיים</option>
-            </select>
-          </label>
+        <div className="mt-5 grid gap-5">
+          <OptionGroup<CableKind>
+            title="כבל או מוליכים"
+            options={[
+              { value: "multicore", label: "כבל רב-גידי" },
+              { value: "singleCore", label: "מוליכים מבודדים / כבלים חד-גידיים" }
+            ]}
+            selected={input.cableKind}
+            onSelect={(cableKind) => patch({ cableKind })}
+          />
 
           {input.cableKind ? (
-            <label className={labelClass}>
-              חומר המוליך
-              <select className={optionClass} value={input.material ?? ""} onChange={(event) => patch({ material: event.target.value as ConductorMaterial })}>
-                <option value="" disabled>
-                  בחר
-                </option>
-                <option value="copper">נחושת</option>
-                <option value="aluminium">אלומיניום</option>
-              </select>
-            </label>
+            <OptionGroup<ConductorMaterial>
+              title="חומר המוליך"
+              options={[
+                { value: "copper", label: "נחושת" },
+                { value: "aluminium", label: "אלומיניום" }
+              ]}
+              selected={input.material}
+              onSelect={(material) => patch({ material })}
+            />
           ) : null}
 
           {input.material ? (
-            <label className={labelClass}>
-              שטח חתך
-              <select className={optionClass} value={input.section ?? ""} onChange={(event) => patch({ section: updateNumber(event.target.value) })}>
-                <option value="" disabled>
-                  בחר
-                </option>
-                {sectionOptions.map((section) => (
-                  <option key={section} value={section}>
-                    {section} ממ״ר
-                  </option>
-                ))}
-              </select>
-            </label>
+            <OptionGroup<number>
+              compact
+              title="שטח חתך"
+              options={sectionOptions.map((section) => ({ value: section, label: `${section} ממ״ר` }))}
+              selected={input.section}
+              onSelect={(section) => patch({ section })}
+            />
           ) : null}
 
           {input.section ? (
-            <label className={labelClass}>
-              מספר כבלים / מערכות במקביל
-              <input
-                className={optionClass}
-                min={1}
-                type="number"
-                value={input.parallelCount ?? 1}
-                onChange={(event) => patch({ parallelCount: Math.max(1, Number.parseInt(event.target.value, 10) || 1) })}
-              />
-            </label>
+            <OptionGroup<number>
+              compact
+              title="מספר כבלים / מערכות במקביל"
+              options={quantityOptions.map((quantity) => ({ value: quantity, label: String(quantity) }))}
+              selected={input.parallelCount ?? 1}
+              onSelect={(parallelCount) => patch({ parallelCount })}
+            />
           ) : null}
 
           {input.parallelCount ? (
-            <label className={labelClass}>
-              סביבה חיצונית
-              <select className={optionClass} value={input.environment ?? ""} onChange={(event) => patch({ environment: event.target.value as Environment })}>
-                <option value="" disabled>
-                  בחר
-                </option>
-                <option value="air">אוויר</option>
-                <option value="ground">קרקע</option>
-              </select>
-            </label>
+            <OptionGroup<Environment>
+              title="סביבה חיצונית"
+              options={[
+                { value: "air", label: "אוויר" },
+                { value: "ground", label: "קרקע" }
+              ]}
+              selected={input.environment}
+              onSelect={(environment) => patch({ environment })}
+            />
           ) : null}
         </div>
       </section>
 
       {input.environment ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-          <h2 className="text-xl font-bold text-slate-950">שיטת התקנה</h2>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            {methods.map((method) => (
+        <section className={sectionClass}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-slate-950">שיטת התקנה</h2>
+            {activeMethod && !methodsExpanded ? (
               <button
-                className={`rounded-lg border p-4 text-start transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 ${
-                  input.methodId === method.id ? "border-blue-900 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
-                }`}
-                key={method.id}
-                onClick={() => patch({ methodId: method.id })}
+                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-blue-950 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
+                onClick={() => setMethodsExpanded(true)}
                 type="button"
               >
-                <span className="relative block h-28 w-full overflow-hidden rounded-md border border-slate-200 bg-white">
-                  <Image
-                    alt={`שיטת התקנה ${method.marking}`}
-                    className="object-contain p-2"
-                    fill
-                    sizes="(min-width: 768px) 40vw, 90vw"
-                    src={method.imagePath}
-                  />
-                </span>
-                <span className="mt-3 block text-lg font-bold text-slate-950">
-                  {method.marking} - {method.title}
-                </span>
-                <span className="mt-1 block text-sm leading-6 text-slate-700">{method.description}</span>
+                שנה שיטת התקנה
               </button>
+            ) : null}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {(activeMethod && !methodsExpanded ? [activeMethod] : methods).map((method) => (
+              <MethodCard
+                key={method.id}
+                method={method}
+                selected={input.methodId === method.id}
+                onSelect={() => patch({ methodId: method.id })}
+              />
             ))}
           </div>
         </section>
       ) : null}
 
       {activeMethod ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className={sectionClass}>
           <h2 className="text-xl font-bold text-slate-950">פרטי חישוב</h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
+          <div className="mt-5 grid gap-5">
             {activeMethod.requiresVCategory ? (
-              <label className={labelClass}>
-                קטגוריית V לפי התקנה
-                <select className={optionClass} value={input.vCategory ?? ""} onChange={(event) => patch({ vCategory: event.target.value as VCategory })}>
-                  <option value="" disabled>
-                    בחר לפי האיור
-                  </option>
-                  {Object.entries(activeMethod.vCategories ?? {}).map(([value, category]) => (
-                    <option key={value} value={value}>
-                      {category.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <OptionGroup<VCategory>
+                title="קטגוריית V לפי התקנה"
+                options={Object.entries(activeMethod.vCategories ?? {}).map(([value, category]) => ({
+                  value: value as VCategory,
+                  label: category.label
+                }))}
+                selected={input.vCategory}
+                onSelect={(vCategory) => patch({ vCategory })}
+              />
             ) : null}
 
-            {(!activeMethod.requiresVCategory || input.vCategory) ? (
-              <label className={labelClass}>
-                סוג הבידוד
-                <select className={optionClass} value={input.insulation ?? ""} onChange={(event) => patch({ insulation: event.target.value as Insulation })}>
-                  <option value="" disabled>
-                    בחר
-                  </option>
-                  <option value="70">70°C - PVC</option>
-                  <option value="90">90°C - XLPE</option>
-                </select>
-              </label>
+            {!activeMethod.requiresVCategory || input.vCategory ? (
+              <OptionGroup<Insulation>
+                title="סוג הבידוד"
+                options={[
+                  { value: "70", label: "70°C - PVC" },
+                  { value: "90", label: "90°C - XLPE" }
+                ]}
+                selected={input.insulation}
+                onSelect={(insulation) => patch({ insulation })}
+              />
             ) : null}
 
             {input.insulation ? (
-              <label className={labelClass}>
-                חד-פאזי או תלת-פאזי
-                <select className={optionClass} value={input.phase ?? ""} onChange={(event) => patch({ phase: event.target.value as Phase })}>
-                  <option value="" disabled>
-                    בחר
-                  </option>
-                  <option value="single">חד-פאזי</option>
-                  <option value="three">תלת-פאזי</option>
-                </select>
-              </label>
+              <OptionGroup<Phase>
+                title="חד-פאזי או תלת-פאזי"
+                options={[
+                  { value: "single", label: "חד-פאזי" },
+                  { value: "three", label: "תלת-פאזי" }
+                ]}
+                selected={input.phase}
+                onSelect={(phase) => patch({ phase })}
+              />
             ) : null}
 
             {input.phase ? (
-              <label className={labelClass}>
-                {input.environment === "ground" ? "טמפרטורת קרקע" : "טמפרטורת אוויר אופפת"}
-                <select className={optionClass} value={input.ambientTemperature ?? ""} onChange={(event) => patch({ ambientTemperature: updateNumber(event.target.value) })}>
-                  <option value="" disabled>
-                    בחר
-                  </option>
-                  {temperatureOptions.map((temperature) => (
-                    <option key={temperature} value={temperature}>
-                      {temperature}°C
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <OptionGroup<number>
+                compact
+                title={input.environment === "ground" ? "טמפרטורת קרקע" : "טמפרטורת אוויר אופפת"}
+                options={temperatureOptions.map((temperature) => ({ value: temperature, label: `${temperature}°C` }))}
+                selected={input.ambientTemperature}
+                onSelect={(ambientTemperature) => patch({ ambientTemperature })}
+              />
             ) : null}
 
             {readyForGrouping && groupingMode === "table4" ? (
-              <label className={labelClass}>
-                סידור התקנה לפי טבלה 4
-                <select
-                  className={optionClass}
-                  value={input.table4Arrangement ?? ""}
-                  onChange={(event) => patch({ table4Arrangement: event.target.value as Table4Arrangement })}
-                >
-                  <option value="" disabled>
-                    בחר סידור
-                  </option>
-                  {Object.entries(table4Arrangements).map(([value, arrangement]) => (
-                    <option key={value} value={value}>
-                      שורה {arrangement.row} - {arrangement.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <OptionGroup<Table4Arrangement>
+                title="סידור התקנה לפי טבלה 4"
+                options={Object.entries(table4Arrangements).map(([value, arrangement]) => ({
+                  value: value as Table4Arrangement,
+                  label: `שורה ${arrangement.row}`,
+                  description: arrangement.label
+                }))}
+                selected={input.table4Arrangement}
+                onSelect={(table4Arrangement) => patch({ table4Arrangement })}
+              />
             ) : null}
 
             {readyForGrouping && groupingMode && groupingMode !== "table4" ? (
-              <label className={labelClass}>
-                מרחק בין כבלים / קבוצות
-                <select className={optionClass} value={input.spacing ?? ""} onChange={(event) => patch({ spacing: event.target.value as SpacingCategory })}>
-                  <option value="" disabled>
-                    בחר מרחק
-                  </option>
-                  {spacingOptions.map((spacing) => (
-                    <option key={spacing.value} value={spacing.value}>
-                      {spacing.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <OptionGroup<SpacingCategory>
+                title="מרחק בין כבלים / קבוצות"
+                options={spacingOptions.map((spacing) => ({ value: spacing.value, label: spacing.label }))}
+                selected={input.spacing}
+                onSelect={(spacing) => patch({ spacing })}
+              />
             ) : null}
 
             {readyForGrouping && groupingResolved ? (
-              <label className={labelClass}>
-                מספר כולל בקבוצה
-                <input
-                  className={optionClass}
-                  min={input.parallelCount}
-                  type="number"
-                  value={input.groupCount ?? input.parallelCount ?? 1}
-                  onChange={(event) =>
-                    patch({ groupCount: Math.max(input.parallelCount ?? 1, Number.parseInt(event.target.value, 10) || input.parallelCount || 1) })
-                  }
-                />
-              </label>
+              <OptionGroup<number>
+                compact
+                title="מספר כולל בקבוצה"
+                options={groupQuantityOptions.map((groupCount) => ({ value: groupCount, label: String(groupCount) }))}
+                selected={input.groupCount ?? input.parallelCount ?? 1}
+                onSelect={(groupCount) => patch({ groupCount })}
+              />
             ) : null}
           </div>
         </section>
       ) : null}
 
       {showProtection ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className={sectionClass}>
           <h2 className="text-xl font-bold text-slate-950">מפסק אוטומטי</h2>
-          <div className="mt-5 grid gap-4 md:grid-cols-2">
-            <label className={labelClass}>
-              סוג ההגנה
-              <select className={optionClass} value={input.protectionType ?? ""} onChange={(event) => patch({ protectionType: event.target.value as ProtectionType })}>
-                <option value="" disabled>
-                  בחר
-                </option>
-                <option value="mcb">מא״ז / מפסק אוטומטי סטנדרטי</option>
-                <option value="adjustable-breaker">מפסק אוטומטי ניתן לכוונון</option>
-              </select>
-            </label>
+          <div className="mt-5 grid gap-5">
+            <OptionGroup<ProtectionType>
+              title="סוג ההגנה"
+              options={[
+                { value: "mcb", label: "מא״ז / מפסק אוטומטי סטנדרטי", description: "עד 63 אמפר" },
+                { value: "adjustable-breaker", label: "מפסק אוטומטי ניתן לכוונון", description: "עד 4000 אמפר" }
+              ]}
+              selected={input.protectionType}
+              onSelect={(protectionType) => patch({ protectionType })}
+            />
 
             {input.protectionType ? (
-              <label className={labelClass}>
-                זרם נקוב של המפסק In
-                <input
-                  className={optionClass}
-                  inputMode="numeric"
-                  list="standard-breaker-ratings"
-                  max={4000}
-                  min={1}
-                  type="number"
-                  value={input.breakerRating ?? ""}
-                  onChange={(event) => patch({ breakerRating: updateNumber(event.target.value) })}
-                />
-                <datalist id="standard-breaker-ratings">
-                  {standardBreakers.map((rating) => (
-                    <option key={rating} value={rating} />
-                  ))}
-                </datalist>
-              </label>
+              <OptionGroup<number>
+                compact
+                title="זרם נקוב של המפסק In"
+                options={breakerOptions.map((breakerRating) => ({ value: breakerRating, label: String(breakerRating) }))}
+                selected={input.breakerRating}
+                onSelect={(breakerRating) => patch({ breakerRating })}
+              />
             ) : null}
           </div>
         </section>
@@ -375,7 +407,7 @@ export function CableCalculator() {
       ) : null}
 
       {result ? (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <section className={sectionClass}>
           <h2 className="text-xl font-bold text-slate-950">תוצאת זרם מותר ובדיקת מפסק</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <ResultCard label="טבלת Iz" value={result.izTable} />

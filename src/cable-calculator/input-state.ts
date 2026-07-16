@@ -1,11 +1,19 @@
 import { getSpacingOptions } from "./calculate";
-import { installationMethods, sections } from "./regulation-data";
+import {
+  maxAdjustableBreakerRating,
+  maxMcbRating,
+  maxSelectableSection,
+  quantityOptions,
+  table4QuantityOptions
+} from "./limits";
+import { installationMethods, sections, standardBreakers } from "./regulation-data";
 import type {
   CableKind,
   CalculatorInput,
   ConductorMaterial,
   Environment,
-  GroupingMode
+  GroupingMode,
+  ProtectionType
 } from "./types";
 
 export type DraftInput = Partial<CalculatorInput>;
@@ -20,11 +28,31 @@ export function defaultTemperature(environment: Environment) {
 }
 
 export function getAvailableSections(material?: ConductorMaterial) {
+  const limitedSections = sections.filter((section) => section <= maxSelectableSection);
+
   if (material === "aluminium") {
-    return sections.filter((section) => section >= 6);
+    return limitedSections.filter((section) => section >= 6);
   }
 
-  return sections;
+  return limitedSections;
+}
+
+export function getGroupQuantityOptions(mode: GroupingMode | null | undefined, parallelCount = 1) {
+  const options = mode === "table4" ? table4QuantityOptions : quantityOptions;
+
+  return options.filter((quantity) => quantity >= parallelCount);
+}
+
+export function getBreakerRatingOptions(protectionType?: ProtectionType) {
+  if (protectionType === "mcb") {
+    return standardBreakers.filter((rating) => rating <= maxMcbRating);
+  }
+
+  if (protectionType === "adjustable-breaker") {
+    return standardBreakers.filter((rating) => rating <= maxAdjustableBreakerRating);
+  }
+
+  return [];
 }
 
 export function resolveDraftGroupingMode(input: DraftInput): GroupingMode | null {
@@ -105,6 +133,11 @@ export function normalizeDraftInput(current: DraftInput, next: DraftInput): Draf
   }
 
   if ("material" in next) {
+    if (current.material !== next.material) {
+      delete merged.section;
+      clearAfterSection(merged);
+    }
+
     const validSections: readonly number[] = getAvailableSections(merged.material);
     const validSection = typeof merged.section === "number" && validSections.includes(merged.section);
     if (!validSection) {
@@ -120,6 +153,7 @@ export function normalizeDraftInput(current: DraftInput, next: DraftInput): Draf
     } else if (typeof merged.parallelCount !== "number") {
       merged.parallelCount = 1;
     }
+    clearProtection(merged);
   }
 
   if ("parallelCount" in next) {
@@ -128,6 +162,7 @@ export function normalizeDraftInput(current: DraftInput, next: DraftInput): Draf
     if (typeof merged.groupCount === "number") {
       merged.groupCount = Math.max(merged.groupCount, parallelCount);
     }
+    clearProtection(merged);
   }
 
   if ("environment" in next) {
@@ -157,6 +192,10 @@ export function normalizeDraftInput(current: DraftInput, next: DraftInput): Draf
 
   if ("ambientTemperature" in next || "table4Arrangement" in next || "spacing" in next || "groupCount" in next) {
     clearProtection(merged);
+  }
+
+  if ("protectionType" in next && current.protectionType !== next.protectionType) {
+    delete merged.breakerRating;
   }
 
   const mode = resolveDraftGroupingMode(merged);

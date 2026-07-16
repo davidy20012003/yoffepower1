@@ -4,7 +4,7 @@ export const contact = {
   phoneDisplay: "+972 54 597 8440",
   phoneHebrewDisplay: "054-597-8440",
   phoneHref: "tel:+972545978440",
-  whatsAppDisplay: "+972 54 597 8440",
+  whatsAppDisplay: "WhatsApp",
   whatsAppHref: "https://wa.me/972545978440",
   emailDisplay: "david.yoffe1@gmail.com",
   emailHref: "mailto:david.yoffe1@gmail.com"
