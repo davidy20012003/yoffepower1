@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
@@ -28,6 +28,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
   const [errorMessage, setErrorMessage] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
+  const authRequestInFlight = useRef(false);
 
   const verifiedEmail = session?.user.email ?? "";
   const verifiedName = (session?.user.user_metadata?.name as string | undefined) ?? "";
@@ -118,6 +119,10 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
   }
 
   async function sendMagicLink() {
+    if (authRequestInFlight.current) {
+      return;
+    }
+
     if (!supabase) {
       setErrorMessage("אימות דוא״ל אינו מוגדר בסביבה זו.");
       return;
@@ -131,6 +136,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
       return;
     }
 
+    authRequestInFlight.current = true;
     setIsBusy(true);
     setErrorMessage("");
     setStatusMessage("");
@@ -147,13 +153,15 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
       }
     });
 
-    setIsBusy(false);
-
     if (error) {
-      setErrorMessage(error.message);
+      authRequestInFlight.current = false;
+      setIsBusy(false);
+      setErrorMessage(getAuthErrorMessage(error));
       return;
     }
 
+    authRequestInFlight.current = false;
+    setIsBusy(false);
     setResendSeconds(60);
     setStatusMessage("נשלח קישור אימות לכתובת הדוא״ל. יש לפתוח את הקישור כדי להשלים את האימות.");
   }
@@ -286,7 +294,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
                   onClick={sendMagicLink}
                   type="button"
                 >
-                  {resendSeconds > 0 ? `שלח שוב בעוד ${resendSeconds}` : "שלח קישור אימות"}
+                  {isBusy ? "שולח..." : resendSeconds > 0 ? `שלח שוב בעוד ${resendSeconds}` : "שלח קישור אימות"}
                 </button>
               </div>
             </div>
@@ -295,4 +303,15 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
       ) : null}
     </section>
   );
+}
+
+function getAuthErrorMessage(error: { message?: string; code?: string; status?: number }) {
+  const message = error.message ?? "";
+  const code = error.code ?? "";
+
+  if (error.status === 429 || code === "over_email_send_rate_limit" || message.toLowerCase().includes("rate limit")) {
+    return "Email rate limit exceeded. Please wait a few minutes and try again.";
+  }
+
+  return message || "Authentication request failed. Please try again.";
 }
