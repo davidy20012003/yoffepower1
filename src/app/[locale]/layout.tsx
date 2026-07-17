@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { MagicLinkReturnHandler } from "@/components/magic-link-return-handler";
 import { Navigation } from "@/components/navigation";
 import { organizationJsonLd } from "@/app/seo";
 import { contact, getDictionary } from "@/i18n/dictionaries";
@@ -32,6 +33,7 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} dir={dir}>
       <body>
+        <MagicLinkReturnHandler />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
