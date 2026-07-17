@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { pageMetadata } from "@/app/seo";
 import { contact, getDictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 
@@ -11,18 +12,14 @@ type PageProps = {
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const dictionary = getDictionary(locale);
+  const path = `/${locale}`;
 
-  return {
+  return pageMetadata({
+    locale,
+    path,
     title: dictionary.metadata.title,
-    description: dictionary.metadata.description,
-    alternates: {
-      canonical: `/${locale}`,
-      languages: {
-        he: "/he",
-        en: "/en"
-      }
-    }
-  };
+    description: dictionary.metadata.description
+  });
 }
 
 function ContactButtons({ locale }: { locale: Locale }) {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { pageMetadata } from "@/app/seo";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 
@@ -11,10 +12,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { locale } = await params;
   const dictionary = getDictionary(locale);
 
-  return {
+  return pageMetadata({
+    locale,
+    path: `/${locale}/services`,
     title: dictionary.services.metadata.title,
     description: dictionary.services.metadata.description
-  };
+  });
 }
 
 export default async function ServicesPage({ params }: PageProps) {

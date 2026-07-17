@@ -1,16 +1,37 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CableCalculator } from "@/components/cable-calculator";
+import { pageMetadata } from "@/app/seo";
 import type { Locale } from "@/i18n/config";
 
 type PageProps = {
   params: Promise<{ locale: Locale }>;
 };
 
-export const metadata: Metadata = {
-  title: "מחשבון זרם מותר לכבלים | David Yoffe Consulting & Testing",
-  description: "מחשבון בעברית לחישוב זרם מותר לכבלים ובדיקת התאמת מפסק אוטומטי."
-};
+const calculatorTitle = "מחשבון בחירת כבלים לפי חוק החשמל | David Yoffe Consulting & Testing";
+const calculatorDescription =
+  "מחשבון כבלים מקצועי בעברית לבחירת חתך כבל, חישוב זרם מותר ובדיקת מפסק לפי שיטות התקנה ודרישות תקנות החשמל בישראל.";
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+
+  if (locale !== "he") {
+    return {};
+  }
+
+  return pageMetadata({
+    locale,
+    path: "/he/cable-calculator",
+    title: calculatorTitle,
+    description: calculatorDescription,
+    alternates: {
+      canonical: "https://www.yoffepower.com/he/cable-calculator",
+      languages: {
+        he: "https://www.yoffepower.com/he/cable-calculator"
+      }
+    }
+  });
+}
 
 export default async function CableCalculatorPage({ params }: PageProps) {
   const { locale } = await params;

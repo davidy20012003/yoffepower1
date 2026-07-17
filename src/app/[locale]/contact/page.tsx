@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/app/seo";
 import { contact, getDictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 
@@ -10,10 +11,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { locale } = await params;
   const dictionary = getDictionary(locale);
 
-  return {
+  return pageMetadata({
+    locale,
+    path: `/${locale}/contact`,
     title: dictionary.contact.metadata.title,
     description: dictionary.contact.metadata.description
-  };
+  });
 }
 
 export default async function ContactPage({ params }: PageProps) {

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Navigation } from "@/components/navigation";
+import { organizationJsonLd } from "@/app/seo";
 import { contact, getDictionary } from "@/i18n/dictionaries";
 import { isLocale, locales } from "@/i18n/config";
 
@@ -26,10 +27,15 @@ export default async function LocaleLayout({
   const phoneDisplay =
     locale === "he" ? contact.phoneHebrewDisplay : contact.phoneDisplay;
   const year = new Date().getFullYear();
+  const jsonLd = organizationJsonLd();
 
   return (
     <html lang={locale} dir={dir}>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <div className="flex min-h-screen flex-col">
           <Navigation locale={locale} />
           <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 pb-28 sm:px-6 sm:py-12 md:pb-12 lg:px-8">
