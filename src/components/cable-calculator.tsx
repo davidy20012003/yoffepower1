@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CalculationAuthPanel } from "@/components/calculation-auth-panel";
 import {
   calculateCable,
   getAvailableMethods,
@@ -572,6 +573,8 @@ export function CableCalculator() {
               </button>
             ) : null}
           </div>
+
+          <CalculationAuthPanel calculationReady={Boolean(result)} />
 
           <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50">
             <summary className="cursor-pointer px-4 py-3 font-bold text-blue-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900">
