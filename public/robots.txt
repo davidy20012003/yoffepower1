@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+Host: https://www.yoffepower.com
+Sitemap: https://www.yoffepower.com/sitemap.xml
