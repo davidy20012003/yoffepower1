@@ -14,7 +14,7 @@ export function getSupabaseBrowserClient() {
     browserClient = createClient(supabaseUrl, supabasePublishableKey, {
       auth: {
         autoRefreshToken: true,
-        detectSessionInUrl: false,
+        detectSessionInUrl: true,
         persistSession: true
       }
     });

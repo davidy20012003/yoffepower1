@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
-type VerificationStep = "details" | "code";
-
 type CalculationAuthPanelProps = {
   calculationReady: boolean;
 };
+
+const pendingAuthNameKey = "yoffe-calculator-pending-auth-name";
+const pendingAuthEmailKey = "yoffe-calculator-pending-auth-email";
 
 const disabledFileActions = [
   "שמור ושלח את החישוב",
@@ -20,10 +21,8 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [session, setSession] = useState<Session | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [step, setStep] = useState<VerificationStep>("details");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
   const [calculationTitle, setCalculationTitle] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
@@ -59,6 +58,45 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
   }, [supabase]);
 
   useEffect(() => {
+    if (!supabase || !session) {
+      return;
+    }
+
+    const pendingName = window.localStorage.getItem(pendingAuthNameKey);
+    const pendingEmail = window.localStorage.getItem(pendingAuthEmailKey);
+    const sessionEmail = session.user.email?.toLowerCase();
+
+    if (!pendingName || !pendingEmail || pendingEmail !== sessionEmail) {
+      return;
+    }
+
+    window.localStorage.removeItem(pendingAuthNameKey);
+    window.localStorage.removeItem(pendingAuthEmailKey);
+
+    if (session.user.user_metadata?.name === pendingName) {
+      return;
+    }
+
+    supabase.auth.updateUser({ data: { name: pendingName } }).then(({ error }) => {
+      if (!error) {
+        supabase.auth.getSession().then(({ data }) => setSession(data.session));
+      }
+    });
+  }, [session, supabase]);
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+
+    if (window.location.href !== cleanUrl) {
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  }, [session]);
+
+  useEffect(() => {
     if (resendSeconds <= 0) {
       return;
     }
@@ -70,8 +108,6 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
   function openModal() {
     setErrorMessage("");
     setStatusMessage("");
-    setOtp("");
-    setStep("details");
     setIsModalOpen(true);
   }
 
@@ -81,7 +117,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
     }
   }
 
-  async function sendCode() {
+  async function sendMagicLink() {
     if (!supabase) {
       setErrorMessage("אימות דוא״ל אינו מוגדר בסביבה זו.");
       return;
@@ -99,10 +135,14 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
     setErrorMessage("");
     setStatusMessage("");
 
+    window.localStorage.setItem(pendingAuthNameKey, trimmedName);
+    window.localStorage.setItem(pendingAuthEmailKey, normalizedEmail);
+
     const { error } = await supabase.auth.signInWithOtp({
       email: normalizedEmail,
       options: {
         data: { name: trimmedName },
+        emailRedirectTo: `${window.location.origin}/he/cable-calculator`,
         shouldCreateUser: true
       }
     });
@@ -114,57 +154,8 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
       return;
     }
 
-    setStep("code");
     setResendSeconds(60);
-    setStatusMessage("נשלח קוד בן שש ספרות לכתובת הדוא״ל.");
-  }
-
-  async function verifyCode() {
-    if (!supabase) {
-      setErrorMessage("אימות דוא״ל אינו מוגדר בסביבה זו.");
-      return;
-    }
-
-    const token = otp.trim();
-    const normalizedEmail = email.trim().toLowerCase();
-    const trimmedName = name.trim();
-
-    if (!/^\d{6}$/.test(token)) {
-      setErrorMessage("יש להזין קוד אימות בן שש ספרות.");
-      return;
-    }
-
-    setIsBusy(true);
-    setErrorMessage("");
-
-    const { data, error } = await supabase.auth.verifyOtp({
-      email: normalizedEmail,
-      token,
-      type: "email"
-    });
-
-    if (error) {
-      setIsBusy(false);
-      setErrorMessage(error.message);
-      return;
-    }
-
-    if (trimmedName) {
-      const { error: updateError } = await supabase.auth.updateUser({
-        data: { name: trimmedName }
-      });
-
-      if (updateError) {
-        setIsBusy(false);
-        setErrorMessage(updateError.message);
-        return;
-      }
-    }
-
-    setSession(data.session);
-    setIsBusy(false);
-    setStatusMessage("");
-    setIsModalOpen(false);
+    setStatusMessage("נשלח קישור אימות לכתובת הדוא״ל. יש לפתוח את הקישור כדי להשלים את האימות.");
   }
 
   async function signOut() {
@@ -266,7 +257,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
                 <input
                   autoComplete="name"
                   className="rounded-md border border-slate-300 px-3 py-2 font-normal text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                  disabled={isBusy || step === "code"}
+                  disabled={isBusy}
                   onChange={(event) => setName(event.target.value)}
                   type="text"
                   value={name}
@@ -277,7 +268,7 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
                 <input
                   autoComplete="email"
                   className="rounded-md border border-slate-300 px-3 py-2 font-normal text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                  disabled={isBusy || step === "code"}
+                  disabled={isBusy}
                   inputMode="email"
                   onChange={(event) => setEmail(event.target.value)}
                   type="email"
@@ -285,55 +276,18 @@ export function CalculationAuthPanel({ calculationReady }: CalculationAuthPanelP
                 />
               </label>
 
-              {step === "code" ? (
-                <label className="grid gap-1 text-sm font-bold text-slate-800">
-                  קוד אימות
-                  <input
-                    autoComplete="one-time-code"
-                    className="rounded-md border border-slate-300 px-3 py-2 font-normal text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900"
-                    inputMode="numeric"
-                    maxLength={6}
-                    onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                    pattern="[0-9]*"
-                    type="text"
-                    value={otp}
-                  />
-                </label>
-              ) : null}
-
               {statusMessage ? <p className="rounded-md bg-blue-50 p-3 text-sm font-semibold text-blue-950">{statusMessage}</p> : null}
               {errorMessage ? <p className="rounded-md bg-red-50 p-3 text-sm font-semibold text-red-800">{errorMessage}</p> : null}
 
               <div className="flex flex-col gap-2 sm:flex-row">
-                {step === "details" ? (
-                  <button
-                    className="rounded-md bg-blue-950 px-4 py-2 text-sm font-bold text-white hover:bg-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 disabled:opacity-60"
-                    disabled={isBusy}
-                    onClick={sendCode}
-                    type="button"
-                  >
-                    שלח קוד
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      className="rounded-md bg-blue-950 px-4 py-2 text-sm font-bold text-white hover:bg-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 disabled:opacity-60"
-                      disabled={isBusy}
-                      onClick={verifyCode}
-                      type="button"
-                    >
-                      אמת
-                    </button>
-                    <button
-                      className="rounded-md border border-slate-300 px-4 py-2 text-sm font-bold text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 disabled:opacity-60"
-                      disabled={isBusy || resendSeconds > 0}
-                      onClick={sendCode}
-                      type="button"
-                    >
-                      {resendSeconds > 0 ? `שלח שוב בעוד ${resendSeconds}` : "שלח קוד שוב"}
-                    </button>
-                  </>
-                )}
+                <button
+                  className="rounded-md bg-blue-950 px-4 py-2 text-sm font-bold text-white hover:bg-blue-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 focus-visible:ring-offset-2 disabled:opacity-60"
+                  disabled={isBusy || resendSeconds > 0}
+                  onClick={sendMagicLink}
+                  type="button"
+                >
+                  {resendSeconds > 0 ? `שלח שוב בעוד ${resendSeconds}` : "שלח קישור אימות"}
+                </button>
               </div>
             </div>
           </div>

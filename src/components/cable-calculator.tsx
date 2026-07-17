@@ -41,6 +41,7 @@ const optionBaseClass =
   "rounded-lg border px-3 py-3 text-start text-sm font-semibold leading-6 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900";
 const selectedClass = "border-blue-900 bg-blue-50 text-blue-950";
 const unselectedClass = "border-slate-200 bg-white text-slate-800 hover:bg-slate-50";
+const calculatorStateStorageKey = "yoffe-cable-calculator-draft";
 
 type Option<T extends string | number> = {
   label: string;
@@ -184,6 +185,7 @@ export function CableCalculator() {
   const resultStatusRef = useRef<HTMLDivElement | null>(null);
   const breakerSectionRef = useRef<HTMLElement | null>(null);
   const lastScrolledResultKey = useRef<string | null>(null);
+  const storageReady = useRef(false);
 
   const methods = useMemo(() => {
     if (!input.cableKind || !input.environment) {
@@ -288,6 +290,30 @@ export function CableCalculator() {
   const errors = fullInput && showProtection ? validateInput(fullInput) : [];
   const result = fullInput && showProtection && errors.length === 0 ? calculateCable(fullInput) : null;
   const resultKey = result && fullInput ? JSON.stringify(fullInput) : null;
+
+  useEffect(() => {
+    const savedInput = window.sessionStorage.getItem(calculatorStateStorageKey);
+
+    if (savedInput) {
+      try {
+        const restoredInput = normalizeDraftInput({}, JSON.parse(savedInput) as DraftInput);
+        setInput(restoredInput);
+        setMethodsExpanded(!restoredInput.methodId);
+      } catch {
+        window.sessionStorage.removeItem(calculatorStateStorageKey);
+      }
+    }
+
+    storageReady.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady.current) {
+      return;
+    }
+
+    window.sessionStorage.setItem(calculatorStateStorageKey, JSON.stringify(input));
+  }, [input]);
 
   useEffect(() => {
     if (!result || !resultKey || lastScrolledResultKey.current === resultKey) {
