@@ -192,8 +192,9 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
       input,
       result
     });
+    const reportContainer = buildReportContainer(reportElement);
 
-    document.body.appendChild(reportElement);
+    document.body.appendChild(reportContainer);
 
     try {
       const html2pdf = (await import("html2pdf.js")).default;
@@ -209,12 +210,17 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
         .from(reportElement)
         .outputPdf("blob");
 
+      if (blob.size < 5000) {
+        throw new Error("Generated PDF is unexpectedly small.");
+      }
+
       setReportBlob(blob);
       setReportMessage("הדוח נוצר ומוכן להורדה.");
     } catch {
+      setReportBlob(null);
       setReportError("לא ניתן ליצור את הדוח כרגע. נסה שוב.");
     } finally {
-      reportElement.remove();
+      reportContainer.remove();
       setIsGeneratingReport(false);
     }
   }
@@ -293,7 +299,7 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
             </button>
             <button
               className="rounded-md border border-blue-900 bg-white px-3 py-2 text-sm font-bold text-blue-950 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 disabled:opacity-60"
-              disabled={!reportBlob}
+              disabled={!reportBlob || isGeneratingReport}
               onClick={downloadReport}
               type="button"
             >
@@ -409,11 +415,9 @@ function buildReportElement({
   result: CalculationResult;
 }) {
   const root = document.createElement("section");
+  const effectiveTitle = customTitle || "דוח חישוב כבל";
   root.dir = "rtl";
   root.style.cssText = [
-    "position:fixed",
-    "left:-10000px",
-    "top:0",
     "width:190mm",
     "min-height:277mm",
     "box-sizing:border-box",
@@ -427,11 +431,7 @@ function buildReportElement({
 
   appendText(root, "h1", "דוח חישוב כבל", "margin:0;color:#0f172a;font-size:26px;font-weight:800;");
   appendText(root, "p", "David Yoffe Consulting & Testing", "margin:4px 0 18px;color:#334155;font-size:14px;font-weight:700;");
-
-  if (customTitle) {
-    appendKeyValue(root, "שם הדוח", customTitle);
-  }
-
+  appendKeyValue(root, "שם הדוח", effectiveTitle);
   appendKeyValue(root, "תאריך ושעה", formatHebrewDateTime(generatedAt));
 
   appendText(root, "h2", "תוצאות החישוב", sectionTitleStyle);
@@ -463,6 +463,23 @@ function buildReportElement({
   appendText(root, "p", "David Yoffe Consulting & Testing", "margin:0;font-weight:700;color:#0f172a;");
 
   return root;
+}
+
+function buildReportContainer(reportElement: HTMLElement) {
+  const container = document.createElement("div");
+  container.setAttribute("aria-hidden", "true");
+  container.style.cssText = [
+    "position:fixed",
+    "inset:0 auto auto 0",
+    "z-index:2147483647",
+    "width:210mm",
+    "min-height:297mm",
+    "overflow:hidden",
+    "background:#ffffff",
+    "pointer-events:none"
+  ].join(";");
+  container.appendChild(reportElement);
+  return container;
 }
 
 const sectionTitleStyle = "margin:20px 0 8px;border-bottom:1px solid #cbd5e1;padding-bottom:5px;color:#0f172a;font-size:18px;font-weight:800;";
