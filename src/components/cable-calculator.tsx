@@ -180,6 +180,7 @@ export function CableCalculator() {
   const [methodsExpanded, setMethodsExpanded] = useState(true);
   const [expandedSteps, setExpandedSteps] = useState<Partial<Record<StepKey, boolean>>>({});
   const resultRef = useRef<HTMLElement | null>(null);
+  const resultStatusRef = useRef<HTMLDivElement | null>(null);
   const breakerSectionRef = useRef<HTMLElement | null>(null);
   const lastScrolledResultKey = useRef<string | null>(null);
 
@@ -251,6 +252,23 @@ export function CableCalculator() {
     });
   }
 
+  function scrollResultStatusIntoView() {
+    const target = resultStatusRef.current ?? resultRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    const rect = target.getBoundingClientRect();
+    const mobileContactBarSpace = 96;
+    const targetTop = window.scrollY + rect.bottom - window.innerHeight + mobileContactBarSpace;
+
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior: "smooth"
+    });
+  }
+
   const fullInput = isReady(input)
     ? ({
         ...input,
@@ -277,7 +295,9 @@ export function CableCalculator() {
 
     lastScrolledResultKey.current = resultKey;
     window.requestAnimationFrame(() => {
-      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.requestAnimationFrame(() => {
+        window.setTimeout(scrollResultStatusIntoView, 80);
+      });
     });
   }, [result, resultKey]);
 
@@ -536,7 +556,10 @@ export function CableCalculator() {
             <ResultCard label="I'z כוללת (אמפר)" value={`${Math.floor(result.correctedTotal)}`} valueClassName="text-red-600" />
             <ResultCard label="I2 מחושב (אמפר)" value={`${Math.round(result.i2)}`} />
           </div>
-          <div className={`mt-5 rounded-lg p-4 ${result.breakerPass ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}>
+          <div
+            className={`mt-5 rounded-lg p-4 ${result.breakerPass ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}
+            ref={resultStatusRef}
+          >
             <p className="text-lg font-bold">{result.breakerPass ? "עובר" : "נכשל"}</p>
             <p className="mt-1 leading-7">{result.message}</p>
             {!result.breakerPass ? (

@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useRef } from "react";
 import { defaultLocale, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/dictionaries";
 
@@ -17,6 +20,13 @@ function localePath(locale: Locale, href: string) {
 export function Navigation({ locale }: { locale: Locale }) {
   const dictionary = getDictionary(locale);
   const alternateLocale: Locale = locale === "he" ? "en" : defaultLocale;
+  const menuRef = useRef<HTMLDetailsElement | null>(null);
+
+  function closeMobileMenu() {
+    if (menuRef.current) {
+      menuRef.current.open = false;
+    }
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -49,7 +59,7 @@ export function Navigation({ locale }: { locale: Locale }) {
             {dictionary.alternateLanguageName}
           </Link>
 
-          <details className="group relative md:hidden">
+          <details className="group relative md:hidden" ref={menuRef}>
             <summary
               aria-label={dictionary.navigation.menu}
               className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md border border-slate-300 text-slate-900 transition hover:bg-slate-100 [&::-webkit-details-marker]:hidden"
@@ -66,6 +76,7 @@ export function Navigation({ locale }: { locale: Locale }) {
                   className="block rounded-md px-3 py-3 text-sm font-medium text-slate-800 hover:bg-slate-100"
                   href={localePath(locale, page.href)}
                   key={page.key}
+                  onClick={closeMobileMenu}
                 >
                   {dictionary.navigation[page.key]}
                 </Link>
