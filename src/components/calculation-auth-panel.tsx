@@ -535,32 +535,7 @@ function buildReportElement({
     root.appendChild(list);
   }
 
-  const disclaimer = document.createElement("section");
-  disclaimer.style.cssText = [
-    "margin-top:12px",
-    "border-top:1px solid #e2e8f0",
-    "padding-top:8px",
-    "color:#64748b",
-    "font-size:10px",
-    "line-height:1.5",
-    "break-inside:avoid",
-    "page-break-inside:avoid"
-  ].join(";");
-  appendText(disclaimer, "h2", "הצהרה:", "margin:0 0 5px;color:#475569;font-size:11px;font-weight:800;");
-  appendText(disclaimer, "p", "דוח זה נוצר באופן אוטומטי על סמך הנתונים שהוזנו על ידי המשתמש.", "margin:0 0 4px;");
-  appendText(
-    disclaimer,
-    "p",
-    "האחריות המלאה לנכונות הנתונים, לבחירת הנתונים ולהשימוש בתוצאות החישוב חלה על המשתמש בלבד.",
-    "margin:0 0 4px;"
-  );
-  appendText(
-    disclaimer,
-    "p",
-    "דוח זה אינו מהווה תחליף לתכנון, בדיקה או אישור של מהנדס חשמל מוסמך ואינו מחליף את דרישות התקנים, התקנות והוראות החוק החלות.",
-    "margin:0;"
-  );
-  root.appendChild(disclaimer);
+  root.appendChild(createDisclaimerTable());
 
   const footer = document.createElement("footer");
   footer.style.cssText = "margin-top:10px;color:#475569;font-size:9px;line-height:1.35;break-inside:avoid;page-break-inside:avoid;";
@@ -655,6 +630,38 @@ function createTraceTable(result: CalculationResult) {
     });
     table.appendChild(tr);
   });
+
+  return table;
+}
+
+function createDisclaimerTable() {
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%;border-collapse:collapse;margin:12px 0 8px;break-inside:avoid;page-break-inside:avoid;";
+
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.style.cssText = [
+    "border-top:1px solid #e2e8f0",
+    "padding:8px 0 0",
+    "color:#64748b",
+    "font-size:10px",
+    "line-height:1.5",
+    "text-align:right",
+    "vertical-align:top"
+  ].join(";");
+
+  appendText(cell, "strong", "הצהרה:", "display:block;margin:0 0 5px;color:#475569;font-size:11px;font-weight:800;");
+  appendText(cell, "p", "דוח זה נוצר באופן אוטומטי על סמך הנתונים שהוזנו על ידי המשתמש.", "margin:0 0 4px;");
+  appendText(cell, "p", "האחריות המלאה לנכונות הנתונים, לבחירת הנתונים ולהשימוש בתוצאות החישוב חלה על המשתמש בלבד.", "margin:0 0 4px;");
+  appendText(
+    cell,
+    "p",
+    "דוח זה אינו מהווה תחליף לתכנון, בדיקה או אישור של מהנדס חשמל מוסמך ואינו מחליף את דרישות התקנים, התקנות והוראות החוק החלות.",
+    "margin:0;"
+  );
+
+  row.appendChild(cell);
+  table.appendChild(row);
 
   return table;
 }
