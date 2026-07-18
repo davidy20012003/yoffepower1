@@ -199,12 +199,25 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
     document.body.appendChild(reportContainer);
 
     try {
+      await waitForReportLayout();
+      const reportWidth = Math.ceil(reportElement.scrollWidth);
+      const reportHeight = Math.ceil(reportElement.scrollHeight);
       const html2pdf = (await import("html2pdf.js")).default;
       const blob = await html2pdf()
         .set({
           filename: reportFileName(calculationTitle),
           image: { type: "jpeg", quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            backgroundColor: "#ffffff",
+            width: reportWidth,
+            height: reportHeight,
+            windowWidth: reportWidth,
+            windowHeight: reportHeight,
+            scrollX: 0,
+            scrollY: 0
+          },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
           margin: [8, 10, 8, 10],
           pagebreak: { mode: ["css", "legacy"] }
@@ -455,6 +468,14 @@ function createReportNumber() {
   const randomPart = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
 
   return `${year}-${timestampPart}${randomPart}`;
+}
+
+function waitForReportLayout() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 function blobToBase64(blob: Blob) {
