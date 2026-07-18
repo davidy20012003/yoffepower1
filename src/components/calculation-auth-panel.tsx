@@ -535,24 +535,18 @@ function buildReportElement({
     root.appendChild(list);
   }
 
-  const footer = document.createElement("footer");
-  footer.style.cssText = "margin-top:18px;border-top:1px solid #e2e8f0;padding-top:8px;color:#475569;font-size:10px;line-height:1.45;break-inside:avoid;page-break-inside:avoid;";
-  appendText(footer, "p", "Prepared by", "margin:0 0 2px;font-weight:700;");
-  appendText(footer, "p", "David Yoffe Consulting & Testing", "margin:0;font-weight:700;");
-  root.appendChild(footer);
-
   const disclaimer = document.createElement("section");
   disclaimer.style.cssText = [
-    "margin-top:14px",
+    "margin-top:12px",
     "border-top:1px solid #e2e8f0",
     "padding-top:8px",
     "color:#64748b",
-    "font-size:9px",
-    "line-height:1.55",
+    "font-size:10px",
+    "line-height:1.5",
     "break-inside:avoid",
     "page-break-inside:avoid"
   ].join(";");
-  appendText(disclaimer, "h2", "הצהרה:", "margin:0 0 5px;color:#475569;font-size:10px;font-weight:800;");
+  appendText(disclaimer, "h2", "הצהרה:", "margin:0 0 5px;color:#475569;font-size:11px;font-weight:800;");
   appendText(disclaimer, "p", "דוח זה נוצר באופן אוטומטי על סמך הנתונים שהוזנו על ידי המשתמש.", "margin:0 0 4px;");
   appendText(
     disclaimer,
@@ -567,6 +561,12 @@ function buildReportElement({
     "margin:0;"
   );
   root.appendChild(disclaimer);
+
+  const footer = document.createElement("footer");
+  footer.style.cssText = "margin-top:10px;color:#475569;font-size:9px;line-height:1.35;break-inside:avoid;page-break-inside:avoid;";
+  appendText(footer, "p", "Prepared by", "margin:0 0 1px;font-weight:700;");
+  appendText(footer, "p", "David Yoffe Consulting & Testing", "margin:0;font-weight:700;");
+  root.appendChild(footer);
 
   return root;
 }
