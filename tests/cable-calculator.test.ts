@@ -10,6 +10,10 @@ import {
 import { calculateCable, getAvailableMethods, validateInput } from "../src/cable-calculator/calculate";
 import { getAvailableSections, getBreakerRatingOptions, normalizeDraftInput } from "../src/cable-calculator/input-state";
 import type { CalculatorInput } from "../src/cable-calculator/types";
+import { dejavuSansBase64 } from "../src/pdf-report/dejavu-sans";
+import { addHebrewDisclaimerToPdf, pdfDisclaimerParagraphs, pdfDisclaimerTitle, type JsPdfDocument } from "../src/pdf-report/disclaimer";
+
+const { jsPDF } = require("../../node_modules/.pnpm/node_modules/jspdf") as { jsPDF: new (options: Record<string, unknown>) => any };
 
 const base: CalculatorInput = {
   cableKind: "multicore",
@@ -29,6 +33,46 @@ const base: CalculatorInput = {
 
 function result(input: Partial<CalculatorInput>) {
   return calculateCable({ ...base, ...input });
+}
+
+function countTextOccurrences(value: string, search: string) {
+  return value.split(search).length - 1;
+}
+
+function createFakePdf() {
+  const textCalls: Array<{ text: string; x: number; y: number }> = [];
+  const fakePdf: JsPdfDocument & { addPageCalls: number; textCalls: typeof textCalls } = {
+    addPageCalls: 0,
+    textCalls,
+    addFileToVFS() {},
+    addFont() {},
+    addPage() {
+      this.addPageCalls += 1;
+    },
+    internal: {
+      getNumberOfPages: () => 1 + fakePdf.addPageCalls,
+      pageSize: {
+        getHeight: () => 297,
+        getWidth: () => 210
+      }
+    },
+    line() {},
+    output: () => new Blob(),
+    setDrawColor() {},
+    setFont() {},
+    setFontSize() {},
+    setLineWidth() {},
+    setPage() {},
+    setR2L() {},
+    setTextColor() {},
+    splitTextToSize: (text) => [text],
+    text(text, x, y) {
+      const textValue = Array.isArray(text) ? text.join("\n") : text;
+      textCalls.push({ text: textValue, x, y });
+    }
+  };
+
+  return fakePdf;
 }
 
 function cellCount() {
@@ -112,6 +156,47 @@ for (const [tableNumber, section, column, expected] of representativeIzSamples) 
   const row = ampacityTables[tableNumber].find((item) => item.section === section);
   assert.equal(row?.[column], expected, `${tableNumber} representative ${column} value at ${section} mm2`);
 }
+
+const fakePdfWithSpace = createFakePdf();
+const directDisclaimer = addHebrewDisclaimerToPdf({
+  pdf: fakePdfWithSpace,
+  fontBase64: "fake-font-data",
+  reportContentHeightPx: 100,
+  reportContentWidthPx: 700
+});
+const writtenDisclaimerText = fakePdfWithSpace.textCalls.map((call) => call.text).join("\n");
+const logicalDisclaimerText = directDisclaimer.lines.join("\n");
+assert.equal(fakePdfWithSpace.addPageCalls, 0, "PDF disclaimer does not add a page when there is sufficient final-page space");
+assert.equal(directDisclaimer.lines[0], pdfDisclaimerTitle, "PDF disclaimer title is returned from the writer");
+assert.equal(countTextOccurrences(logicalDisclaimerText, pdfDisclaimerTitle), 1, "PDF disclaimer title is written exactly once");
+assert.ok(writtenDisclaimerText.length > 0, "PDF disclaimer sends text drawing commands");
+for (const paragraph of pdfDisclaimerParagraphs) {
+  for (const word of paragraph.split(" ").slice(0, 4)) {
+    assert.ok(logicalDisclaimerText.includes(word), `PDF disclaimer logical text includes paragraph word: ${word}`);
+  }
+}
+
+const fakePdfWithoutSpace = createFakePdf();
+addHebrewDisclaimerToPdf({
+  pdf: fakePdfWithoutSpace,
+  fontBase64: "fake-font-data",
+  reportContentHeightPx: 1000,
+  reportContentWidthPx: 700
+});
+assert.equal(fakePdfWithoutSpace.addPageCalls, 1, "PDF disclaimer adds one final page when there is insufficient space");
+
+const generatedPdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+generatedPdf.text("PDF artifact regression", 14, 18);
+const artifactDisclaimer = addHebrewDisclaimerToPdf({
+  pdf: generatedPdf as unknown as JsPdfDocument,
+  fontBase64: dejavuSansBase64,
+  reportContentHeightPx: 100,
+  reportContentWidthPx: 700
+});
+const generatedPdfText = Buffer.from(generatedPdf.output("arraybuffer")).toString("latin1");
+assert.equal(artifactDisclaimer.fontName, "DejaVuSans", "PDF disclaimer uses the embedded Hebrew-capable font");
+assert.ok(generatedPdfText.includes("/DejaVuSans"), "generated PDF artifact contains the embedded disclaimer font");
+assert.equal(countTextOccurrences(generatedPdfText, "<> Tj"), 0, "generated PDF artifact does not contain empty disclaimer text operators");
 
 const methodFilterCases = [
   { cableKind: "multicore", environment: "air", count: 17 },

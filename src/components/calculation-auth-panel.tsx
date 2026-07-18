@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { CalculationResult, CalculatorInput, TraceItem } from "@/cable-calculator/types";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { addHebrewDisclaimerToPdf, type JsPdfDocument } from "@/pdf-report/disclaimer";
+import { dejavuSansBase64 } from "@/pdf-report/dejavu-sans";
 
 type CalculationAuthPanelProps = {
   input: CalculatorInput | null;
@@ -199,31 +201,27 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
     document.body.appendChild(reportContainer);
 
     try {
-      await waitForReportLayout();
-      const reportWidth = Math.ceil(reportElement.scrollWidth);
-      const reportHeight = Math.ceil(reportElement.scrollHeight);
       const html2pdf = (await import("html2pdf.js")).default;
-      const blob = await html2pdf()
+      const worker = html2pdf()
         .set({
           filename: reportFileName(calculationTitle),
           image: { type: "jpeg", quality: 0.98 },
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            width: reportWidth,
-            height: reportHeight,
-            windowWidth: reportWidth,
-            windowHeight: reportHeight,
-            scrollX: 0,
-            scrollY: 0
-          },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
           jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
           margin: [8, 10, 8, 10],
           pagebreak: { mode: ["css", "legacy"] }
         })
         .from(reportElement)
-        .outputPdf("blob");
+        .toPdf();
+      const pdf = (await worker.get("pdf")) as JsPdfDocument;
+      const disclaimerResult = addHebrewDisclaimerToPdf({
+        pdf,
+        fontBase64: dejavuSansBase64,
+        reportContentHeightPx: reportElement.scrollHeight,
+        reportContentWidthPx: reportElement.scrollWidth
+      });
+      assertPdfDisclaimerWasWritten(disclaimerResult.lines);
+      const blob = pdf.output("blob");
 
       if (blob.size < 5000) {
         throw new Error("Generated PDF is unexpectedly small.");
@@ -470,12 +468,12 @@ function createReportNumber() {
   return `${year}-${timestampPart}${randomPart}`;
 }
 
-function waitForReportLayout() {
-  return new Promise<void>((resolve) => {
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
-    });
-  });
+function assertPdfDisclaimerWasWritten(lines: string[]) {
+  const writtenText = lines.join("\n");
+
+  if (!writtenText.includes("הצהרה:") || !writtenText.includes("דוח זה נוצר באופן אוטומטי")) {
+    throw new Error("PDF disclaimer was not written.");
+  }
 }
 
 function blobToBase64(blob: Blob) {
@@ -555,8 +553,6 @@ function buildReportElement({
     remarks.forEach((remark) => appendText(list, "li", remark, "margin:0 0 4px;"));
     root.appendChild(list);
   }
-
-  root.appendChild(createDisclaimerTable());
 
   const footer = document.createElement("footer");
   footer.style.cssText = "margin-top:10px;color:#475569;font-size:9px;line-height:1.35;break-inside:avoid;page-break-inside:avoid;";
@@ -651,38 +647,6 @@ function createTraceTable(result: CalculationResult) {
     });
     table.appendChild(tr);
   });
-
-  return table;
-}
-
-function createDisclaimerTable() {
-  const table = document.createElement("table");
-  table.style.cssText = "width:100%;border-collapse:collapse;margin:12px 0 8px;break-inside:avoid;page-break-inside:avoid;";
-
-  const row = document.createElement("tr");
-  const cell = document.createElement("td");
-  cell.style.cssText = [
-    "border-top:1px solid #e2e8f0",
-    "padding:8px 0 0",
-    "color:#64748b",
-    "font-size:10px",
-    "line-height:1.5",
-    "text-align:right",
-    "vertical-align:top"
-  ].join(";");
-
-  appendText(cell, "strong", "הצהרה:", "display:block;margin:0 0 5px;color:#475569;font-size:11px;font-weight:800;");
-  appendText(cell, "p", "דוח זה נוצר באופן אוטומטי על סמך הנתונים שהוזנו על ידי המשתמש.", "margin:0 0 4px;");
-  appendText(cell, "p", "האחריות המלאה לנכונות הנתונים, לבחירת הנתונים ולהשימוש בתוצאות החישוב חלה על המשתמש בלבד.", "margin:0 0 4px;");
-  appendText(
-    cell,
-    "p",
-    "דוח זה אינו מהווה תחליף לתכנון, בדיקה או אישור של מהנדס חשמל מוסמך ואינו מחליף את דרישות התקנים, התקנות והוראות החוק החלות.",
-    "margin:0;"
-  );
-
-  row.appendChild(cell);
-  table.appendChild(row);
 
   return table;
 }

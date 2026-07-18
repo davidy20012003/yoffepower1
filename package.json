@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:cable": "tsc --target ES2020 --module commonjs --moduleResolution node --outDir .tmp-tests --rootDir . --noEmit false tests/cable-calculator.test.ts src/cable-calculator/calculate.ts src/cable-calculator/regulation-data.ts src/cable-calculator/types.ts && node .tmp-tests/tests/cable-calculator.test.js"
+    "test:cable": "tsc --target ES2020 --module commonjs --moduleResolution node --outDir .tmp-tests --rootDir . --noEmit false tests/cable-calculator.test.ts src/cable-calculator/calculate.ts src/cable-calculator/input-state.ts src/cable-calculator/regulation-data.ts src/cable-calculator/types.ts src/pdf-report/disclaimer.ts && node .tmp-tests/tests/cable-calculator.test.js"
   },
   "engines": {
     "node": "22.x"
