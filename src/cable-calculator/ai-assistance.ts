@@ -31,6 +31,7 @@ export type AiPhotoAnalysis = {
     confidence: number;
     reason: string;
     trayKind: "perforated" | "unperforated" | "wire_mesh" | "unknown";
+    coverVisible: boolean | "unknown";
     environment: Environment | "unknown";
     wallCeilingLocation: "wall" | "ceiling" | "unknown";
     visibleExistingCableCount: number | null;
@@ -63,11 +64,13 @@ export type AiCableInterpretation = {
 export type AiAssistanceDraft = {
   draft: DraftInput;
   missingFields: string[];
+  warnings: string[];
   appliedLabels: Array<{ label: string; value: string }>;
 };
 
 export function buildAiAssistanceDraft(photo: AiPhotoAnalysis, cable: AiCableInterpretation): AiAssistanceDraft {
   const missingFields = new Set<string>();
+  const warnings = new Set<string>();
   const candidate: DraftInput = {};
 
   if (cable.cableKind) {
@@ -109,6 +112,9 @@ export function buildAiAssistanceDraft(photo: AiPhotoAnalysis, cable: AiCableInt
         candidate.methodId = methodId;
       } else {
         missingFields.add("שיטת התקנה");
+        if (requiresVisibleCover(photo)) {
+          warnings.add("שיטת התקנה סגורה מחייבת מכסה גלוי וברור בתמונה. לכן השיטה לא מולאה אוטומטית.");
+        }
       }
     }
   } else {
@@ -167,6 +173,7 @@ export function buildAiAssistanceDraft(photo: AiPhotoAnalysis, cable: AiCableInt
   return {
     draft,
     missingFields: Array.from(missingFields),
+    warnings: Array.from(warnings),
     appliedLabels: describeAiDraft(draft)
   };
 }
@@ -251,10 +258,18 @@ function resolveMethodId(photo: AiPhotoAnalysis, cableKind: CableKind, environme
   }
 
   if (photo.recognition.installationType === "cable_channel_or_trench") {
+    if (photo.recognition.coverVisible !== true) {
+      return null;
+    }
+
     return cableKind === "singleCore" ? "heh-wall-channel-single" : "vav-wall-channel-multicore";
   }
 
   return null;
+}
+
+function requiresVisibleCover(photo: AiPhotoAnalysis) {
+  return photo.recognition.installationType === "cable_channel_or_trench" && photo.recognition.coverVisible !== true;
 }
 
 function resolveTable4Arrangement(photo: AiPhotoAnalysis): Table4Arrangement | null {

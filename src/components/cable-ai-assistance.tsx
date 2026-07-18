@@ -312,6 +312,17 @@ function ConfirmationSummary({
         </div>
       ) : null}
 
+      {draft.warnings.length > 0 ? (
+        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-950">
+          <p className="font-bold">אזהרות AI:</p>
+          <ul className="mt-2 list-inside list-disc leading-6">
+            {draft.warnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {interpretation.notes.length > 0 ? (
         <ul className="mt-3 list-inside list-disc text-sm leading-6 text-slate-600">
           {interpretation.notes.map((note) => (

@@ -36,13 +36,13 @@ async function analyzePhoto(imageDataUrl: unknown) {
 
   const result = await callGemini({
     instructions:
-      "You are assisting an Israeli electrical cable ampacity calculator. Analyze only visible installation conditions. Do not perform cable ampacity calculations. Be conservative. If the photo is blurred, dark, unclear, or the installation is not sufficiently visible, mark photoQuality.isUsable=false. Recognize only these supported installation types: cable tray, ladder tray, wire mesh tray, cable channel or trench, direct burial in the ground, and cables fixed directly to a wall or ceiling. If unsupported or uncertain, set supported=false and installationType=unknown. Count only visible existing cables. Do not estimate hidden cables. If visible cables are in more than one layer, classify simply as grouped_or_piled. Give remaining space estimates only if visible scale and geometry are sufficient; otherwise status=unknown and estimateTextHebrew=null.",
+      "You are assisting an Israeli electrical cable ampacity calculator. Analyze only visible installation conditions. Do not perform cable ampacity calculations. Be conservative. If the photo is blurred, dark, unclear, or the installation is not sufficiently visible, mark photoQuality.isUsable=false. Recognize only these supported installation types: cable tray, ladder tray, wire mesh tray, cable channel or trench, direct burial in the ground, and cables fixed directly to a wall or ceiling. If unsupported or uncertain, set supported=false and installationType=unknown. Count only visible existing cables. Do not estimate hidden cables. If visible cables are in more than one layer, classify simply as grouped_or_piled. Give remaining space estimates only if visible scale and geometry are sufficient; otherwise status=unknown and estimateTextHebrew=null. Strict cover rule: a closed or covered cable tray/channel/trench may be recognized only when a continuous cover or lid over the cables is clearly and directly visible and confidently part of the cable tray. A tray side wall, nearby building wall, ceiling or floor slab, another tray above it, shadows, partial obstruction, unclear angle, or cables disappearing behind a structure are not evidence of a cover. Set coverVisible=true only with direct visible cover evidence. Set coverVisible=false when no cover is visible. Set coverVisible=unknown when the view is unclear or obstructed.",
     prompt: "נתח את תמונת התקנת הכבלים והחזר JSON בלבד לפי הסכמה.",
     imageDataUrl,
     schema: photoSchema
   });
 
-  return NextResponse.json(result);
+  return NextResponse.json(normalizePhotoAnalysis(result));
 }
 
 async function interpretCableRequest(cableRequest: unknown) {
@@ -185,6 +185,28 @@ function parseGeminiJson(outputText: string) {
   return parsed;
 }
 
+function normalizePhotoAnalysis(result: unknown) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return result;
+  }
+
+  const recognition = (result as { recognition?: unknown }).recognition;
+  if (!recognition || typeof recognition !== "object" || Array.isArray(recognition)) {
+    return result;
+  }
+
+  const nextRecognition = recognition as { coverVisible?: unknown };
+  if (nextRecognition.coverVisible === "true") {
+    nextRecognition.coverVisible = true;
+  } else if (nextRecognition.coverVisible === "false") {
+    nextRecognition.coverVisible = false;
+  } else if (nextRecognition.coverVisible !== true && nextRecognition.coverVisible !== false) {
+    nextRecognition.coverVisible = "unknown";
+  }
+
+  return result;
+}
+
 function toGeminiSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) {
     return schema.map((item) => toGeminiSchema(item));
@@ -290,6 +312,7 @@ const photoSchema = {
         "confidence",
         "reason",
         "trayKind",
+        "coverVisible",
         "environment",
         "wallCeilingLocation",
         "visibleExistingCableCount",
@@ -309,6 +332,7 @@ const photoSchema = {
         confidence: { type: "number" },
         reason: { type: "string" },
         trayKind: { type: "string", enum: ["perforated", "unperforated", "wire_mesh", "unknown"] },
+        coverVisible: { type: "string", enum: ["true", "false", "unknown"] },
         environment: { type: "string", enum: ["air", "ground", "unknown"] },
         wallCeilingLocation: { type: "string", enum: ["wall", "ceiling", "unknown"] },
         visibleExistingCableCount: { type: ["number", "null"] },

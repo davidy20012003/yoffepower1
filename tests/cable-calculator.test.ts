@@ -211,6 +211,7 @@ const highConfidenceTrayPhoto: AiPhotoAnalysis = {
     confidence: 0.91,
     reason: "Visible ladder tray with existing cables.",
     trayKind: "unknown",
+    coverVisible: false,
     environment: "air",
     wallCeilingLocation: "unknown",
     visibleExistingCableCount: 2,
@@ -249,6 +250,57 @@ const lowConfidencePhoto: AiPhotoAnalysis = {
 const lowConfidenceDraft = buildAiAssistanceDraft(lowConfidencePhoto, n2xyCableRequest);
 assert.equal(lowConfidenceDraft.draft.methodId, undefined, "low-confidence AI photo results do not fill an installation method");
 assert.ok(lowConfidenceDraft.missingFields.includes("שיטת התקנה מזוהה בתמונה"), "low-confidence AI photo results require manual installation selection");
+
+const coveredChannelPhoto: AiPhotoAnalysis = {
+  ...highConfidenceTrayPhoto,
+  recognition: {
+    ...highConfidenceTrayPhoto.recognition,
+    installationType: "cable_channel_or_trench",
+    coverVisible: true,
+    confidence: 0.92,
+    reason: "A continuous tray cover is clearly visible over the cables.",
+    suggestedTable4Arrangement: null
+  }
+};
+const coveredChannelDraft = buildAiAssistanceDraft(coveredChannelPhoto, n2xyCableRequest);
+assert.equal(coveredChannelDraft.draft.methodId, "vav-wall-channel-multicore", "tray with clearly visible cover allows closed/channel method");
+assert.deepEqual(coveredChannelDraft.warnings, [], "tray with clearly visible cover does not produce a closed-method warning");
+
+const openTrayNearWallPhoto: AiPhotoAnalysis = {
+  ...coveredChannelPhoto,
+  recognition: {
+    ...coveredChannelPhoto.recognition,
+    coverVisible: false,
+    reason: "A side wall and a nearby building wall are visible, but no continuous tray cover is visible."
+  }
+};
+const openTrayNearWallDraft = buildAiAssistanceDraft(openTrayNearWallPhoto, n2xyCableRequest);
+assert.equal(openTrayNearWallDraft.draft.methodId, undefined, "open tray near a wall rejects closed/channel method");
+assert.ok(openTrayNearWallDraft.warnings.some((warning) => warning.includes("מכסה גלוי וברור")), "open tray near a wall shows cover warning");
+
+const obstructedChannelPhoto: AiPhotoAnalysis = {
+  ...coveredChannelPhoto,
+  recognition: {
+    ...coveredChannelPhoto.recognition,
+    coverVisible: "unknown",
+    reason: "The camera angle is unclear and the tray is partially obstructed."
+  }
+};
+const obstructedChannelDraft = buildAiAssistanceDraft(obstructedChannelPhoto, n2xyCableRequest);
+assert.equal(obstructedChannelDraft.draft.methodId, undefined, "unclear or obstructed photo rejects closed/channel method");
+assert.ok(obstructedChannelDraft.warnings.some((warning) => warning.includes("מכסה גלוי וברור")), "unclear or obstructed photo shows cover warning");
+
+const trayAbovePhoto: AiPhotoAnalysis = {
+  ...coveredChannelPhoto,
+  recognition: {
+    ...coveredChannelPhoto.recognition,
+    coverVisible: false,
+    reason: "Another tray or concrete surface is above the cables, but no lid over this tray is directly visible."
+  }
+};
+const trayAboveDraft = buildAiAssistanceDraft(trayAbovePhoto, n2xyCableRequest);
+assert.equal(trayAboveDraft.draft.methodId, undefined, "another tray or concrete surface above cables is not interpreted as a cover");
+assert.ok(trayAboveDraft.warnings.some((warning) => warning.includes("מכסה גלוי וברור")), "another tray or concrete surface above cables shows cover warning");
 
 const methodFilterCases = [
   { cableKind: "multicore", environment: "air", count: 17 },
