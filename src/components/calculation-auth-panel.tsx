@@ -26,6 +26,7 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
   const [reportError, setReportError] = useState("");
   const [reportBlob, setReportBlob] = useState<Blob | null>(null);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [isSendingReport, setIsSendingReport] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [resendSeconds, setResendSeconds] = useState(0);
   const authRequestInFlight = useRef(false);
@@ -240,6 +241,42 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
     URL.revokeObjectURL(url);
   }
 
+  async function sendReportByEmail() {
+    if (!reportBlob || !session?.access_token) {
+      return;
+    }
+
+    setIsSendingReport(true);
+    setReportError("");
+    setReportMessage("");
+
+    try {
+      const response = await fetch("/api/send-report", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": crypto.randomUUID()
+        },
+        body: JSON.stringify({
+          fileName: reportFileName(calculationTitle),
+          pdfBase64: await blobToBase64(reportBlob)
+        })
+      });
+
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error || `Email sending failed (${response.status}).`);
+      }
+
+      setReportMessage("הדוח נשלח בהצלחה");
+    } catch (error) {
+      setReportError(error instanceof Error ? error.message : "Email sending failed.");
+    } finally {
+      setIsSendingReport(false);
+    }
+  }
+
   return (
     <section className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4" dir="rtl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -306,11 +343,12 @@ export function CalculationAuthPanel({ input, result }: CalculationAuthPanelProp
               הורד דוח
             </button>
             <button
-              className="rounded-md border border-blue-200 bg-white px-3 py-2 text-sm font-bold text-blue-950 opacity-60"
-              disabled
+              className="rounded-md border border-blue-900 bg-white px-3 py-2 text-sm font-bold text-blue-950 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-900 disabled:opacity-60"
+              disabled={!reportBlob || isGeneratingReport || isSendingReport}
+              onClick={sendReportByEmail}
               type="button"
             >
-              שלח בדוא״ל
+              {isSendingReport ? "שולח..." : "שלח בדוא״ל"}
             </button>
           </div>
           {reportMessage ? <p className="text-sm font-semibold text-blue-950">{reportMessage}</p> : null}
@@ -401,6 +439,26 @@ function getAuthErrorMessage(error: { message?: string; code?: string; status?: 
 function reportFileName(title: string) {
   const safeTitle = title.trim().replace(/[\\/:*?"<>|]+/g, "-") || "דוח חישוב כבל";
   return `${safeTitle}.pdf`;
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("Could not read generated PDF."));
+    reader.onload = () => {
+      const result = reader.result;
+
+      if (typeof result !== "string") {
+        reject(new Error("Could not read generated PDF."));
+        return;
+      }
+
+      resolve(result.split(",")[1] ?? "");
+    };
+
+    reader.readAsDataURL(blob);
+  });
 }
 
 function buildReportElement({
