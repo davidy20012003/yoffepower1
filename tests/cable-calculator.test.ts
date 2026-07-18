@@ -1,5 +1,10 @@
 import * as assert from "node:assert/strict";
 import {
+  buildAiAssistanceDraft,
+  type AiCableInterpretation,
+  type AiPhotoAnalysis
+} from "../src/cable-calculator/ai-assistance";
+import {
   airTemperatureFactors,
   ampacityTables,
   groundTemperatureFactors,
@@ -197,6 +202,53 @@ const generatedPdfText = Buffer.from(generatedPdf.output("arraybuffer")).toStrin
 assert.equal(artifactDisclaimer.fontName, "DejaVuSans", "PDF disclaimer uses the embedded Hebrew-capable font");
 assert.ok(generatedPdfText.includes("/DejaVuSans"), "generated PDF artifact contains the embedded disclaimer font");
 assert.equal(countTextOccurrences(generatedPdfText, "<> Tj"), 0, "generated PDF artifact does not contain empty disclaimer text operators");
+
+const highConfidenceTrayPhoto: AiPhotoAnalysis = {
+  photoQuality: { isUsable: true, confidence: 0.92, issues: [] },
+  recognition: {
+    supported: true,
+    installationType: "ladder_tray",
+    confidence: 0.91,
+    reason: "Visible ladder tray with existing cables.",
+    trayKind: "unknown",
+    environment: "air",
+    wallCeilingLocation: "unknown",
+    visibleExistingCableCount: 2,
+    multipleLayers: false,
+    grouping: "single_layer_spaced",
+    spacingCategory: "unknown",
+    scaleAvailable: false,
+    remainingSpace: { status: "unknown", estimateTextHebrew: null },
+    suggestedTable4Arrangement: "ladderSupports"
+  },
+  messageHebrew: "זוהה סולם כבלים."
+};
+const n2xyCableRequest: AiCableInterpretation = {
+  interpretedTextHebrew: "שני כבלי N2XY 4×240",
+  confidence: 0.95,
+  cableKind: "multicore",
+  material: "copper",
+  section: 240,
+  parallelCount: 2,
+  insulation: "90",
+  phase: "three",
+  missingFields: [],
+  notes: []
+};
+const aiDraft = buildAiAssistanceDraft(highConfidenceTrayPhoto, n2xyCableRequest).draft;
+assert.equal(aiDraft.methodId, "tet-zayin-ladder-multicore", "AI ladder tray maps to the existing multicore ladder method");
+assert.equal(aiDraft.table4Arrangement, "ladderSupports", "AI ladder tray maps to Table 4 ladder/support arrangement");
+assert.equal(aiDraft.groupCount, 4, "AI group count includes only visible existing cables plus requested parallel cables");
+assert.equal(aiDraft.breakerRating, undefined, "AI assistance does not choose a circuit breaker");
+
+const lowConfidencePhoto: AiPhotoAnalysis = {
+  ...highConfidenceTrayPhoto,
+  photoQuality: { isUsable: false, confidence: 0.3, issues: ["blurred"] },
+  recognition: { ...highConfidenceTrayPhoto.recognition, supported: false, confidence: 0.3, installationType: "unknown" }
+};
+const lowConfidenceDraft = buildAiAssistanceDraft(lowConfidencePhoto, n2xyCableRequest);
+assert.equal(lowConfidenceDraft.draft.methodId, undefined, "low-confidence AI photo results do not fill an installation method");
+assert.ok(lowConfidenceDraft.missingFields.includes("שיטת התקנה מזוהה בתמונה"), "low-confidence AI photo results require manual installation selection");
 
 const methodFilterCases = [
   { cableKind: "multicore", environment: "air", count: 17 },

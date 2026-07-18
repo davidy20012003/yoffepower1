@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { normalizeAiDraft } from "@/cable-calculator/ai-assistance";
+import { CableAiAssistance } from "@/components/cable-ai-assistance";
 import { CalculationAuthPanel } from "@/components/calculation-auth-panel";
 import {
   calculateCable,
@@ -239,6 +241,32 @@ export function CableCalculator() {
     setInput((current) => normalizeDraftInput(current, next));
   }
 
+  function applyAiDraft(draft: DraftInput) {
+    const normalizedDraft = normalizeAiDraft(draft);
+    setInput(normalizedDraft);
+    setMethodsExpanded(!normalizedDraft.methodId);
+    setExpandedSteps({
+      cableKind: false,
+      material: false,
+      section: false,
+      parallelCount: false,
+      environment: false,
+      method: false,
+      vCategory: false,
+      insulation: false,
+      phase: false,
+      ambientTemperature: false,
+      table4Arrangement: false,
+      spacing: false,
+      groupCount: false,
+      protectionType: true,
+      breakerRating: true
+    });
+    window.requestAnimationFrame(() => {
+      breakerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   function chooseAnotherBreaker() {
     setExpandedSteps((current) => ({
       ...current,
@@ -330,6 +358,8 @@ export function CableCalculator() {
 
   return (
     <div className="space-y-6" dir="rtl">
+      <CableAiAssistance onApply={applyAiDraft} />
+
       <section className={sectionClass}>
         <h2 className="text-xl font-bold text-slate-950">רצף בחירה</h2>
         <div className="mt-5 grid gap-5">
