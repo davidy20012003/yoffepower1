@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
-const openAiResponsesUrl = "https://api.openai.com/v1/responses";
-const model = process.env.OPENAI_VISION_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-5-mini";
+const geminiGenerateContentBaseUrl = "https://generativelanguage.googleapis.com/v1beta/models";
+const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const fallbackModel = process.env.GEMINI_FALLBACK_MODEL ?? "gemini-3.5-flash";
 const maxImageDataUrlLength = 7_500_000;
 
 type AssistanceRequest = {
@@ -33,20 +34,11 @@ async function analyzePhoto(imageDataUrl: unknown) {
     return jsonError("Invalid image. Please upload a clear JPG, PNG, or WEBP photo.", 400);
   }
 
-  const result = await callOpenAi({
+  const result = await callGemini({
     instructions:
       "You are assisting an Israeli electrical cable ampacity calculator. Analyze only visible installation conditions. Do not perform cable ampacity calculations. Be conservative. If the photo is blurred, dark, unclear, or the installation is not sufficiently visible, mark photoQuality.isUsable=false. Recognize only these supported installation types: cable tray, ladder tray, wire mesh tray, cable channel or trench, direct burial in the ground, and cables fixed directly to a wall or ceiling. If unsupported or uncertain, set supported=false and installationType=unknown. Count only visible existing cables. Do not estimate hidden cables. If visible cables are in more than one layer, classify simply as grouped_or_piled. Give remaining space estimates only if visible scale and geometry are sufficient; otherwise status=unknown and estimateTextHebrew=null.",
-    content: [
-      {
-        type: "input_text",
-        text: "נתח את תמונת התקנת הכבלים והחזר JSON בלבד לפי הסכמה."
-      },
-      {
-        type: "input_image",
-        image_url: imageDataUrl,
-        detail: "high"
-      }
-    ],
+    prompt: "נתח את תמונת התקנת הכבלים והחזר JSON בלבד לפי הסכמה.",
+    imageDataUrl,
     schema: photoSchema
   });
 
@@ -58,74 +50,201 @@ async function interpretCableRequest(cableRequest: unknown) {
     return jsonError("Please describe the cables you would like to add.", 400);
   }
 
-  const result = await callOpenAi({
+  const result = await callGemini({
     instructions:
       "You are assisting an Israeli electrical cable ampacity calculator. Convert the user's requested cable text into calculator input fields only when explicit or strongly implied by cable notation. Do not perform ampacity calculations. Do not invent missing values. N2XY is copper XLPE and NA2XY is aluminium XLPE. A notation like 4x240 or 4×240 usually means one multicore three-phase cable with 240 mm2 conductors. A phrase like two N2XY 4x240 cables means parallelCount=2. If the material, section, insulation, phase, cable kind, or quantity cannot be determined, set that field to null and list it in missingFields.",
-    content: [
-      {
-        type: "input_text",
-        text: `בקשת המשתמש: ${cableRequest}`
-      }
-    ],
+    prompt: `בקשת המשתמש: ${cableRequest}`,
     schema: cableSchema
   });
 
   return NextResponse.json(result);
 }
 
-async function callOpenAi({
+async function callGemini({
   instructions,
-  content,
+  prompt,
+  imageDataUrl,
   schema
 }: {
   instructions: string;
-  content: Array<Record<string, unknown>>;
+  prompt: string;
+  imageDataUrl?: string;
   schema: Record<string, unknown>;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    throw new Error("Missing OPENAI_API_KEY.");
+    throw new Error("Missing GEMINI_API_KEY.");
   }
 
-  const response = await fetch(openAiResponsesUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
+  const requestBody = {
+    systemInstruction: {
+      parts: [{ text: instructions }]
     },
-    body: JSON.stringify({
-      model,
-      instructions,
-      input: [
-        {
-          role: "user",
-          content
-        }
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "cable_ai_assistance",
-          strict: false,
-          schema
-        }
+    contents: [
+      {
+        role: "user",
+        parts: buildGeminiParts(prompt, imageDataUrl)
       }
-    })
-  });
+    ],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: toGeminiSchema(schema)
+    }
+  };
+  let response = await fetchGemini(model, apiKey, requestBody);
+
+  if (!response.ok && fallbackModel !== model) {
+    const errorText = await readProviderError(response);
+    if (!isUnavailableModelError(errorText)) {
+      throw new Error(errorText);
+    }
+
+    response = await fetchGemini(fallbackModel, apiKey, requestBody);
+  }
 
   if (!response.ok) {
     throw new Error(await readProviderError(response));
   }
 
-  const data = (await response.json()) as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> };
-  const outputText = data.output_text ?? data.output?.flatMap((item) => item.content ?? []).map((item) => item.text).find(Boolean);
+  const data = (await response.json()) as {
+    candidates?: Array<{
+      content?: {
+        parts?: Array<{ text?: string }>;
+      };
+    }>;
+  };
+  const outputText = data.candidates?.flatMap((candidate) => candidate.content?.parts ?? []).map((part) => part.text).find(Boolean);
 
   if (!outputText) {
     throw new Error("AI response did not include structured output.");
   }
 
-  return JSON.parse(outputText) as unknown;
+  return parseGeminiJson(outputText);
+}
+
+function fetchGemini(selectedModel: string, apiKey: string, body: Record<string, unknown>) {
+  return fetch(`${geminiGenerateContentBaseUrl}/${encodeURIComponent(selectedModel)}:generateContent`, {
+    method: "POST",
+    headers: {
+      "x-goog-api-key": apiKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
+function buildGeminiParts(prompt: string, imageDataUrl?: string) {
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }];
+
+  if (imageDataUrl) {
+    const parsedImage = parseImageDataUrl(imageDataUrl);
+    parts.push({
+      inlineData: {
+        mimeType: parsedImage.mimeType,
+        data: parsedImage.base64
+      }
+    });
+  }
+
+  return parts;
+}
+
+function parseImageDataUrl(imageDataUrl: string) {
+  const match = /^data:(image\/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(imageDataUrl);
+
+  if (!match) {
+    throw new Error("Invalid image data.");
+  }
+
+  return {
+    mimeType: match[1] === "image/jpg" ? "image/jpeg" : match[1],
+    base64: match[2]
+  };
+}
+
+function parseGeminiJson(outputText: string) {
+  const cleaned = outputText
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .trim();
+  const jsonStart = cleaned.indexOf("{");
+  const jsonEnd = cleaned.lastIndexOf("}");
+
+  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+    throw new Error("AI response was not valid JSON.");
+  }
+
+  const parsed = JSON.parse(cleaned.slice(jsonStart, jsonEnd + 1)) as unknown;
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI response JSON did not match the expected object shape.");
+  }
+
+  return parsed;
+}
+
+function toGeminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((item) => toGeminiSchema(item));
+  }
+
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+
+  const source = schema as Record<string, unknown>;
+  const target: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(source)) {
+    if (key === "additionalProperties") {
+      continue;
+    }
+
+    if (key === "type") {
+      if (Array.isArray(value)) {
+        const nonNullTypes = value.filter((item) => item !== "null");
+        target.type = toGeminiType(String(nonNullTypes[0] ?? "string"));
+        if (value.includes("null")) {
+          target.nullable = true;
+        }
+      } else {
+        target.type = toGeminiType(String(value));
+      }
+      continue;
+    }
+
+    if (key === "enum" && Array.isArray(value)) {
+      const enumValues = value.filter((item) => item !== null);
+      if (enumValues.length !== value.length) {
+        target.nullable = true;
+      }
+      target.enum = enumValues;
+      continue;
+    }
+
+    target[key] = toGeminiSchema(value);
+  }
+
+  return target;
+}
+
+function toGeminiType(type: string) {
+  const types: Record<string, string> = {
+    object: "OBJECT",
+    array: "ARRAY",
+    string: "STRING",
+    number: "NUMBER",
+    integer: "INTEGER",
+    boolean: "BOOLEAN"
+  };
+
+  return types[type] ?? type;
+}
+
+function isUnavailableModelError(errorText: string) {
+  return /no longer available|not found|not supported|unavailable/i.test(errorText);
 }
 
 function isSafeImageDataUrl(value: string) {
