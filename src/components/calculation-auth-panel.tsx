@@ -575,8 +575,9 @@ function buildReportContainer(reportElement: HTMLElement) {
   const container = document.createElement("div");
   container.setAttribute("aria-hidden", "true");
   container.style.cssText = [
-    "position:fixed",
-    "inset:0 auto auto 0",
+    "position:absolute",
+    "top:0",
+    "left:0",
     "z-index:2147483647",
     "width:210mm",
     "height:auto",
